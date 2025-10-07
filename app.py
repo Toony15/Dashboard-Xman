@@ -197,6 +197,9 @@ if menu == "Satisfaction":
             )
             resume_df["is_numeric"] = pd.to_numeric(resume_df["Answer_Clean"], errors="coerce").notna()
             resume_df["Answer_Numeric"] = pd.to_numeric(resume_df["Answer_Clean"], errors="coerce")
+            grafik_df = combined_df[["event", "unit"]].copy()
+            event_count = grafik_df.groupby("unit")["event"].count().reset_index()
+            event_count.columns = ["unit", "jumlah_event"]
 
             # --- Grafik 1: Jumlah Pelatihan per Unit ---
             st.subheader("📊 Grafik Jumlah Pelatihan per Unit")
@@ -204,10 +207,12 @@ if menu == "Satisfaction":
             unit_count = resume_df.groupby("Unit", as_index=False)["Event"].nunique()
             unit_count = unit_count.rename(columns={"Event": "Jumlah Pelatihan"})
 
-            st.bar_chart(unit_count.set_index("Unit")["Jumlah Pelatihan"])
+            st.bar_chart(event_count.set_index("unit")["jumlah_event"])
+            # st.bar_chart(unit_count.set_index("Unit")["Jumlah Pelatihan"])
 
             st.markdown("#### 📋 Tabel Jumlah Pelatihan per Unit")
-            st.dataframe(unit_count, use_container_width=True)
+            # st.dataframe(unit_count, use_container_width=True)
+            st.dataframe(event_count, use_container_width=True)
 
             # --- Table 1: Nilai Rata-rata per Event ---
             st.subheader("🧾 Table 1: Nilai Rata-rata per Event")
@@ -399,14 +404,3 @@ elif menu == "Variation":
 elif menu == "Compensation":
     st.title("💰 Compensation Calculation")
     st.info("Halaman ini akan Menghitung kompensasi yang diterima expert.")
-
-
-
-
-
-
-
-
-
-
-
