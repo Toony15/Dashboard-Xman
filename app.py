@@ -166,7 +166,7 @@ if menu == "Satisfaction":
                         .mean()
                     )
                     rekap_nilai["Nilai (x10)"] = rekap_nilai["Answer"] * 10
-                    rekap_nilai = rekap_nilai[["Question ID", "Question", "Nilai (x10)"]]
+                    rekap_nilai = rekap_nilai[["Question", "Nilai (x10)"]]
 
                     st.markdown("##### 📊 Rekap Nilai (Pertanyaan Numerik)")
                     st.dataframe(rekap_nilai, use_container_width=True)
