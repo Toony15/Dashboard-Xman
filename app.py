@@ -90,7 +90,7 @@ if menu == "Satisfaction":
             expert_col = "Expert"
 
             # Pastikan kolom ada
-            if not all(col in filtered_df.columns for col in [qid_col, qtext_col, answer_col, expert_col]):
+            if not all(col in filtered_df.columns for col in [qtext_col, answer_col, expert_col]):
                 st.warning("Beberapa kolom yang dibutuhkan tidak ditemukan (Pastikan ada kolom Question ID, Question, Answer, dan Expert).")
             else:
                 # Bersihkan nilai numeric
@@ -162,7 +162,7 @@ if menu == "Satisfaction":
                 if not numeric_df.empty:
                     numeric_df["Answer"] = numeric_df["Answer"].astype(float)
                     rekap_nilai = (
-                        numeric_df.groupby(["Question ID", "Question"], as_index=False)["Answer"]
+                        numeric_df.groupby(["Question"], as_index=False)["Answer"]
                         .mean()
                     )
                     rekap_nilai["Nilai (x10)"] = rekap_nilai["Answer"] * 10
