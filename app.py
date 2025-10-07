@@ -198,7 +198,7 @@ if menu == "Satisfaction":
             resume_df["is_numeric"] = pd.to_numeric(resume_df["Answer_Clean"], errors="coerce").notna()
             resume_df["Answer_Numeric"] = pd.to_numeric(resume_df["Answer_Clean"], errors="coerce")
             grafik_df = combined_df[["Event", "Unit"]].copy()
-            event_count = grafik_df.groupby("Unit")["Event"].count().reset_index()
+            event_count = grafik_df.groupby("Unit")["Event"].nunique().reset_index()
             event_count.columns = ["unit", "jumlah_event"]
 
             # --- Grafik 1: Jumlah Pelatihan per Unit ---
