@@ -12,7 +12,7 @@ menu = st.sidebar.radio(
 
 # --- 📄 BAGIAN UTAMA SESUAI MENU ---
 if menu == "Satisfaction":
-    st.title("📊 Upload & Tampilkan Data Berdasarkan Event")
+    st.title("📊 Upload File")
 
     uploaded_files = st.file_uploader(
         "Upload data (format Excel)", 
