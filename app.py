@@ -10,12 +10,13 @@ from modules.satisfactionRate import satisfaction_page
 from modules.learningHour import learning_hour_page
 from modules.variation import variation_page
 from modules.compensation import compensation_page
+from dataManager import show_data_manager
 
 # --- 🎛️ Sidebar Menu ---
 st.sidebar.title("📁 Menu Utama")
 menu = st.sidebar.radio(
     "Pilih Halaman:",
-    ["Satisfaction", "Learning Hour", "Variation", "Compensation"]
+    ["Satisfaction", "Learning Hour", "Variation", "Compensation", "Data Manager"]
 )
 
 # --- Routing Halaman ---
@@ -27,3 +28,5 @@ elif menu == "Variation":
     variation_page()
 elif menu == "Compensation":
     compensation_page()
+elif menu == "Data Manager":
+    show_data_manager()

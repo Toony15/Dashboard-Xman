@@ -1,9 +1,13 @@
 from supabase import create_client
 import streamlit as st
 
-# Ambil kredensial dari Streamlit Secrets
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+
+def get_db_connection():
+    url = st.secrets["SUPABASE_URL"]
+    key = st.secrets["SUPABASE_KEY"]
+    return create_client(url, key)
 
 def init_connection():
     """Inisialisasi koneksi ke Supabase"""

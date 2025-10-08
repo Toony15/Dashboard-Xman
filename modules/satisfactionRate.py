@@ -144,7 +144,7 @@ def satisfaction_page():
 
                 expert_df = filtered_df[filtered_df["Expert"] == selected_expert]
 
-                st.markdown(f"### 🔹 Expert: **{selected_expert}**")
+                st.markdown(f"### 🔹 Expert: {selected_expert}")
 
                 # Pisahkan jawaban numerik dan deskriptif
                 numeric_df = expert_df[pd.to_numeric(expert_df["Answer"], errors="coerce").notna()].copy()
