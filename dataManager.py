@@ -112,53 +112,73 @@ def show_data_manager():
 
     # --- 🟣 EDIT DATA ---
     elif menu == "Edit Data":
+        # -----------------------------
+        # PILIH TABEL
+        # -----------------------------
         st.subheader("✏️ Edit / Hapus Data di Database")
-        tableName = st.radio("Pilih Aksi:", ["Learning Impact 1", "Learning Hours", "Variation"])
-        if tableName == "Learning Impact 1":
-            editTable = "learningImpact1"
-        else:
-            editTable = "none"
 
-        if st.button("Muat Data"):
+        table_name = st.selectbox("Pilih Tabel:", ["learningImpact1", "learningHours", "variation"])
+
+        # -----------------------------
+        # MUAT DATA DARI SUPABASE
+        # -----------------------------
+        if st.button("📥 Muat Data"):
             try:
-                response = supabase.table(editTable).select("*").execute()
+                response = supabase.table(table_name).select("*").execute()
                 df = pd.DataFrame(response.data)
 
                 if df.empty:
-                    st.warning("Tidak ada data untuk diedit.")
+                    st.warning("Tidak ada data di tabel ini.")
                 else:
-                    st.success(f"✅ Data dimuat ({len(df)} baris)")
-                    edited_df = st.data_editor(df, num_rows="dynamic")
-
-                    if st.button("💾 Simpan Perubahan"):
-                        try:
-                            if edited_df is None or edited_df.empty:
-                                st.warning("⚠️ Tidak ada data untuk disimpan.")
-                            else:
-                                # Pastikan tabel valid
-                                if not editTable:
-                                    st.error("❌ Nama tabel tidak ditemukan.")
-                                else:
-                                    with st.spinner("Menyimpan perubahan ke database..."):
-                                        # Hapus semua data lama
-                                        delete_response = supabase.table(editTable).delete().neq("id", 0).execute()
-
-                                        # Cek hasil delete
-                                        if hasattr(delete_response, "error") and delete_response.error:
-                                            st.error(f"❌ Gagal menghapus data lama: {delete_response.error}")
-                                        else:
-                                            # Insert data baru
-                                            records = edited_df.to_dict(orient="records")
-
-                                            insert_response = supabase.table(editTable).insert(records).execute()
-
-                                            if hasattr(insert_response, "error") and insert_response.error:
-                                                st.error(f"❌ Gagal menyimpan data baru: {insert_response.error}")
-                                            else:
-                                                st.success("✅ Data berhasil diperbarui!")
-                        except Exception as e:
-                            st.error(f"🚨 Terjadi kesalahan saat menyimpan data: {e}")
-
-
+                    st.session_state.df = df
+                    st.success(f"✅ Data berhasil dimuat ({len(df)} baris)")
             except Exception as e:
                 st.error(f"Gagal memuat data: {e}")
+
+        # -----------------------------
+        # TAMPILKAN DATA & PILIH BARIS
+        # -----------------------------
+        if "df" in st.session_state:
+            df = st.session_state.df
+            st.dataframe(df)
+
+            # Pilih baris berdasarkan ID
+            selected_id = st.selectbox("Pilih ID untuk diubah / hapus:", df["id"])
+
+            # Ambil data baris terpilih
+            selected_row = df[df["id"] == selected_id].iloc[0]
+
+            st.markdown("### 📝 Ubah Data")
+            updated_data = {}
+
+            # Buat input dinamis berdasarkan kolom (kecuali id)
+            for col in df.columns:
+                if col == "id":
+                    st.text_input("ID (tidak bisa diubah)", str(selected_row[col]), disabled=True)
+                    continue
+                else:
+                    # Input dinamis
+                    val = st.text_area(f"{col}", str(selected_row[col]))
+                    updated_data[col] = val
+
+            # -----------------------------
+            # UPDATE DATA
+            # -----------------------------
+            if st.button("💾 Simpan Perubahan"):
+                try:
+                    response = supabase.table(table_name).update(updated_data).eq("id", selected_id).execute()
+                    st.success("✅ Data berhasil diperbarui!")
+                    st.session_state.df.loc[df["id"] == selected_id, list(updated_data.keys())] = list(updated_data.values())
+                except Exception as e:
+                    st.error(f"🚨 Gagal memperbarui data: {e}")
+
+            # -----------------------------
+            # DELETE DATA
+            # -----------------------------
+            if st.button("🗑️ Hapus Data Ini"):
+                try:
+                    response = supabase.table(table_name).delete().eq("id", selected_id).execute()
+                    st.success("🗑️ Data berhasil dihapus!")
+                    st.session_state.df = df[df["id"] != selected_id]
+                except Exception as e:
+                    st.error(f"🚨 Gagal menghapus data: {e}")
