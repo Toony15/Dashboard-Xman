@@ -131,10 +131,34 @@ def show_data_manager():
                     edited_df = st.data_editor(df, num_rows="dynamic")
 
                     if st.button("💾 Simpan Perubahan"):
-                        # Hapus semua dan insert ulang
-                        supabase.table(editTable).delete().neq("id", 0).execute()
-                        supabase.table(editTable).insert(edited_df.to_dict(orient="records")).execute()
-                        st.success("✅ Data berhasil diperbarui!")
+                        try:
+                            if edited_df is None or edited_df.empty:
+                                st.warning("⚠️ Tidak ada data untuk disimpan.")
+                            else:
+                                # Pastikan tabel valid
+                                if not editTable:
+                                    st.error("❌ Nama tabel tidak ditemukan.")
+                                else:
+                                    with st.spinner("Menyimpan perubahan ke database..."):
+                                        # Hapus semua data lama
+                                        delete_response = supabase.table(editTable).delete().neq("id", 0).execute()
+
+                                        # Cek hasil delete
+                                        if hasattr(delete_response, "error") and delete_response.error:
+                                            st.error(f"❌ Gagal menghapus data lama: {delete_response.error}")
+                                        else:
+                                            # Insert data baru
+                                            records = edited_df.to_dict(orient="records")
+
+                                            insert_response = supabase.table(editTable).insert(records).execute()
+
+                                            if hasattr(insert_response, "error") and insert_response.error:
+                                                st.error(f"❌ Gagal menyimpan data baru: {insert_response.error}")
+                                            else:
+                                                st.success("✅ Data berhasil diperbarui!")
+                        except Exception as e:
+                            st.error(f"🚨 Terjadi kesalahan saat menyimpan data: {e}")
+
 
             except Exception as e:
                 st.error(f"Gagal memuat data: {e}")
