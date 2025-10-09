@@ -56,15 +56,15 @@ def show_data_manager():
         combined_df = st.session_state.get("combined_df", pd.DataFrame())
         st.dataframe(combined_df)
         
-        tableName = st.radio("Pilih destinasi:", ["Satisfaction Rate", "Learning Hours", "Variation"])
-        if tableName == "Satisfaction Rate":
-            DestinationTable = "satisfactionRate"
+        tableName = st.radio("Pilih destinasi:", ["Learning Impact 1", "Learning Hours", "Variation"])
+        if tableName == "Learning Impact 1":
+            DestinationTable = "learningImpact1"
         else:
             viewTable = "none"
 
         if uploaded_file and st.button("Upload ke Database"):
             try:
-                df = combined_df[["NIK","Email","Event","Question","Answer","Expert","Unit","Quarter"]]
+                df = combined_df[["id","Email","Event","Question","Answer","Expert","Unit","Quarter"]]
 
                 # Upload baris demi baris ke tabel Supabase
                 data = df.to_dict(orient="records")
@@ -79,9 +79,9 @@ def show_data_manager():
     # --- 🔵 READ DATA ---
     elif menu == "Lihat Data":
         st.subheader("📖 Lihat Data dari Database")
-        tableName = st.radio("Pilih Aksi:", ["Satisfaction Rate", "Learning Hours", "Variation"])
-        if tableName == "Satisfaction Rate":
-            viewTable = "satisfactionRate"
+        tableName = st.radio("Pilih Aksi:", ["Learning Impact 1", "Learning Hours", "Variation"])
+        if tableName == "Learning Impact 1":
+            viewTable = "learningImpact1"
         else:
             viewTable = "none"
 
@@ -113,9 +113,9 @@ def show_data_manager():
     # --- 🟣 EDIT DATA ---
     elif menu == "Edit Data":
         st.subheader("✏️ Edit / Hapus Data di Database")
-        tableName = st.radio("Pilih Aksi:", ["Satisfaction Rate", "Learning Hours", "Variation"])
-        if tableName == "Satisfaction Rate":
-            editTable = "satisfactionRate"
+        tableName = st.radio("Pilih Aksi:", ["Learning Impact 1", "Learning Hours", "Variation"])
+        if tableName == "Learning Impact 1":
+            editTable = "learningImpact1"
         else:
             editTable = "none"
 
