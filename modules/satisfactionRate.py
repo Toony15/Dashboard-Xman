@@ -60,7 +60,7 @@ def satisfaction_page():
     else:
         options = ["Q1", "Q2", "Q3", "Q4"]
         default_selection = options
-        selectedQuarter = st.pills("Action", options, selection_mode="multi", default=default_selection)
+        selectedQuarter = st.pills("Select Quarter", options, selection_mode="multi", default=default_selection)
         
         combined_df = combined_df[combined_df["Quarter"].isin(selectedQuarter)]
         # st.success(f"✅ Data berhasil digabungkan ({len(combined_df)} baris total)")
@@ -204,7 +204,6 @@ def satisfaction_page():
                         st.info("Tidak ada jawaban deskriptif untuk expert ini.")
             with tab1:        
                 # --- 📈 RESUME SECTION ---
-                st.markdown("---")
                 st.markdown(
                     """
                     <h1 style='text-align: center;'>Overview</h1>
@@ -289,7 +288,72 @@ def satisfaction_page():
 
                 # --- Table 3: Rekap skor expert seluruh event ---
                 st.subheader("Table 3: Rekap Skor Expert seluruh event")
+                # ===== 🧠 FILTER EXPERT =====
+                experts = sorted(combined_df["Expert"].dropna().unique())
+                selected_expert = st.selectbox("👤 Pilih Expert", ["Semua"] + experts)
                 
+
+                # Konversi kolom Answer menjadi numeric jika memungkinkan
+                combined_df["Answer_Numeric"] = pd.to_numeric(combined_df["Answer"], errors="coerce")
+
+                # ===== 1️⃣ TABLE NUMERIC =====
+                 # Filter berdasarkan expert yang dipilih
+                if selected_expert != "Semua":
+                    filtered_df = combined_df[combined_df["Expert"] == selected_expert]
+                else:
+                    filtered_df = combined_df.copy()
+                numeric_df = filtered_df.dropna(subset=["Answer_Numeric"]).copy()
+
+                # Hitung rata-rata nilai per pertanyaan
+                avg_per_question = (
+                    numeric_df.groupby("Question")["Answer_Numeric"]
+                    .mean()
+                    .reset_index()
+                    .rename(columns={"Answer_Numeric": "Average_Score"})
+                )
+
+                # Kalikan dengan 10
+                avg_per_question["Average_Score"] = avg_per_question["Average_Score"] * 10
+
+                # Tampilkan tabel rata-rata
+                st.subheader("📊 Rata-rata Nilai per Pertanyaan (Numeric)")
+                st.dataframe(avg_per_question, use_container_width=True)
+
+                # ===== 2️⃣ SCORECARD (Rata-rata Keseluruhan) =====
+                overall_avg = avg_per_question["Average_Score"].mean()
+
+                # Tampilkan sebagai scorecard di tengah
+                st.markdown(
+                    f"""
+                    <div style='text-align: center; padding: 20px; border-radius: 10px; background-color: #1f2937;'>
+                        <h3 style='color: white;'>🎯 Rata-rata Skor Keseluruhan</h3>
+                        <h1 style='color: #4CAF50;'>{overall_avg:.2f}</h1>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+                # st.subheader("Table 3: Rekap Skor Expert seluruh event")
+                # combined_df["Answer_Numeric"] = pd.to_numeric(combined_df["Answer"], errors="coerce")
+
+                # # ===== 1️⃣ TABLE NUMERIC =====
+                # numeric_df = combined_df.dropna(subset=["Answer_Numeric"]).copy()
+
+                # # Hitung rata-rata nilai per pertanyaan
+                # avg_per_question = (
+                #     numeric_df.groupby("Question")["Answer_Numeric"]
+                #     .mean()
+                #     .reset_index()
+                #     .rename(columns={"Answer_Numeric": "Average_Score"})
+                # )
+
+                # st.subheader("📊 Rata-rata Nilai per Pertanyaan (Numeric)")
+                # st.dataframe(avg_per_question, use_container_width=True)
+
+                # ===== 2️⃣ TABLE NON-NUMERIC =====
+                non_numeric_df = combined_df[combined_df["Answer_Numeric"].isna()].copy()
+
+                st.subheader("🗒️ Rekap Jawaban Non-Numeric")
+                st.dataframe(non_numeric_df, use_container_width=True)
                 
                 
                 
