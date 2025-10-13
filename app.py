@@ -22,6 +22,7 @@ st.markdown(
 
 # --- Sidebar ---
 with st.sidebar:
+    st.logo("assets/xman.png", size="large")
     
     # st.title("ExmanComp")
     with st.container(horizontal=True, vertical_alignment="bottom", gap="small", horizontal_alignment="center"):
