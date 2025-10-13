@@ -18,12 +18,13 @@ def satisfaction_page():
             # Ambil nama file tanpa ekstensi
             file_name = uploaded_file.name.rsplit(".", 1)[0]
             parts = file_name.split("_")
-            event, expert, unit = (parts + ["", "", ""])[:3]
+            event, expert, unit,quarter = (parts + ["", "", "", ""])[:4]
 
             # Tambahkan kolom metadata
             df["Event"] = event
             df["Expert"] = expert
             df["Unit"] = unit
+            df["Quarter"] = quarter
             all_data.append(df)
 
         if all_data:
@@ -57,7 +58,12 @@ def satisfaction_page():
     if combined_df.empty:
         st.info("Tidak terdapat data")
     else:
-        st.success(f"✅ Data berhasil digabungkan ({len(combined_df)} baris total)")
+        options = ["Q1", "Q2", "Q3", "Q4"]
+        default_selection = options
+        selectedQuarter = st.pills("Action", options, selection_mode="multi", default=default_selection)
+        
+        combined_df = combined_df[combined_df["Quarter"].isin(selectedQuarter)]
+        # st.success(f"✅ Data berhasil digabungkan ({len(combined_df)} baris total)")
         st.dataframe(combined_df)
 
         st.markdown("---")

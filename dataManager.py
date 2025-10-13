@@ -9,13 +9,13 @@ from st_aggrid import GridUpdateMode
 
 def show_data_manager():
     def init_aggrid(
-    df, 
-    grid_key=None, 
-    thousand_columns=[], 
-    use_selection=False, 
-    height=600, 
-    width='100%', 
-    selection_mode='single'
+        df, 
+        grid_key=None, 
+        thousand_columns=[], 
+        use_selection=False, 
+        height=600, 
+        width='100%', 
+        selection_mode='single'
     ):
         """
         Menampilkan dataframe dalam tabel interaktif AG Grid.
