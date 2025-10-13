@@ -35,7 +35,7 @@ def satisfaction_page():
     
     st.title("Learning Impact 1 (LIM 1)")  
     options = ["Upload file","From Data Base"]
-    mode = st.pills("Data Resource", options, selection_mode="single")
+    mode = st.pills("Data Resource", options, selection_mode="single", default="Upload file")
     if mode == "Upload file":   
         st.header("📊 Upload File")
 
