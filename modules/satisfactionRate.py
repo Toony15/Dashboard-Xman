@@ -1,17 +1,11 @@
 import streamlit as st
 import pandas as pd
 import io
+from dbConfig import get_db_connection
 from google import genai
 
 def satisfaction_page():
-    st.title("📊 Upload File")
-
-    uploaded_files = st.file_uploader(
-        "Upload data (format Excel)", 
-        accept_multiple_files=True, 
-        type=["xls", "xlsx"]
-    )
-
+    supabase = get_db_connection()
     def read_and_merge(files):
         all_data = []
         for uploaded_file in files:
@@ -38,16 +32,30 @@ def satisfaction_page():
             return combined
         else:
             return pd.DataFrame()
+    
+    st.title("Learning Impact 1 (LIM 1)")  
+    options = ["Upload file","From Data Base"]
+    mode = st.pills("Data Resource", options, selection_mode="single")
+    if mode == "Upload file":   
+        st.header("📊 Upload File")
 
-    # Simpan hasil upload ke session_state agar tidak hilang setelah interaksi
-    if uploaded_files:
-        st.session_state["combined_df"] = read_and_merge(uploaded_files)
-
-    # Ambil data dari session_state
-    combined_df = st.session_state.get("combined_df", pd.DataFrame())
+        uploaded_files = st.file_uploader(
+            "Upload data (format Excel)", 
+            accept_multiple_files=True, 
+            type=["xls", "xlsx"]
+        )
+        # Simpan hasil upload ke session_state agar tidak hilang setelah interaksi
+        if uploaded_files:
+            st.session_state["combined_df"] = read_and_merge(uploaded_files)
+        # Ambil data dari session_state
+        combined_df = st.session_state.get("combined_df", pd.DataFrame())
+    elif mode == "From Data Base":
+        viewTable="learningImpact1"
+        response = supabase.table(viewTable).select("*").execute()
+        combined_df = pd.DataFrame(response.data)
 
     if combined_df.empty:
-        st.info("Silakan unggah satu atau beberapa file Excel terlebih dahulu.")
+        st.info("Tidak terdapat data")
     else:
         st.success(f"✅ Data berhasil digabungkan ({len(combined_df)} baris total)")
         st.dataframe(combined_df)
@@ -169,7 +177,7 @@ def satisfaction_page():
                 if not text_df.empty:
                     text_df = text_df.reset_index(drop=True)
                     text_df.index += 1
-                    rekap_teks = text_df[["Answer", "Objective"]].rename_axis("No").reset_index()
+                    rekap_teks = text_df[["Answer"]].rename_axis("No").reset_index()
 
                     st.markdown("##### 💬 Rekap Jawaban Deskriptif")
                     st.dataframe(rekap_teks, use_container_width=True)
