@@ -27,7 +27,7 @@ with st.sidebar:
         logo1 = 'assets/corpu.jpeg'
         if os.path.exists(logo1):
             st.image(logo1, width=32)
-        st.header("Expert Calculator")
+        st.header("Telkom CorpU")
 
     # try:
     #     col1, col2 = st.columns(2)
