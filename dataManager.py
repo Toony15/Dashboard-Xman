@@ -117,8 +117,20 @@ def show_data_manager():
             type=["xls", "xlsx"]
         )
         
-        def read_and_merge(files):
+        def read_and_merge(files, table_name):
             all_data = []
+            # 1️⃣ Ambil ID terakhir dari database
+            try:
+                response = supabase.table(table_name).select("id").order("id", desc=True).limit(1).execute()
+                if response.data:
+                    last_id = response.data[0]["id"]
+                else:
+                    last_id = 0
+            except Exception as e:
+                st.warning(f"Gagal mengambil ID terakhir dari database: {e}")
+                last_id = 0
+
+            id_counter = last_id + 1  # mulai dari id terakhir + 1
             for uploaded_file in files:
                 try:
                     df = pd.read_excel(uploaded_file)
@@ -136,6 +148,8 @@ def show_data_manager():
                 df["Expert"] = expert
                 df["Unit"] = unit
                 df["Quarter"] = quarter
+                df["id"] = range(id_counter, id_counter + len(df))
+                id_counter += len(df)
                 all_data.append(df)
 
             if all_data:
@@ -145,19 +159,18 @@ def show_data_manager():
             else:
                 return pd.DataFrame()
 
-        # Simpan hasil upload ke session_state agar tidak hilang setelah interaksi
-        if uploaded_file:
-            st.session_state["combined_df"] = read_and_merge(uploaded_file)
-
-        # Ambil data dari session_state
-        combined_df = st.session_state.get("combined_df", pd.DataFrame())
-        st.dataframe(combined_df)
-        
         tableName = st.radio("Pilih destinasi:", ["Learning Impact 1", "Learning Hours", "Variation"])
         if tableName == "Learning Impact 1":
             DestinationTable = "learningImpact1"
         else:
             viewTable = "none"
+        # Simpan hasil upload ke session_state agar tidak hilang setelah interaksi
+        if uploaded_file:
+            st.session_state["combined_df"] = read_and_merge(uploaded_file, DestinationTable)
+
+        # Ambil data dari session_state
+        combined_df = st.session_state.get("combined_df", pd.DataFrame())
+        st.dataframe(combined_df)
 
         if uploaded_file and st.button("Upload ke Database"):
             try:
