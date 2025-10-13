@@ -14,7 +14,6 @@ def satisfaction_page():
             except Exception as e:
                 st.error(f"Gagal membaca file {uploaded_file.name}: {e}")
                 continue
-
             # Ambil nama file tanpa ekstensi
             file_name = uploaded_file.name.rsplit(".", 1)[0]
             parts = file_name.split("_")
