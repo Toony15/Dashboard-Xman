@@ -29,7 +29,7 @@ with st.sidebar:
         if os.path.exists(logo1):
             st.image(logo1, width=32)
         st.header("Telkom CorpU")
-
+    st.link_button("Cek Dokumentasi", "https://www.openai.com")
     # try:
     #     col1, col2 = st.columns(2)
     #     with col1:
@@ -308,8 +308,15 @@ with tab3:
 
 # =================================================================================
 st.divider()
-
-st.title("Simulasi Compensation")
+with st.container(horizontal_alignment="center"):
+    st.markdown(
+        """
+        <h1 style='text-align: center; color: white;'>
+            Simulasi Compensation
+        </h1>
+        """,
+        unsafe_allow_html=True
+    )
 
 # ========== 1️⃣ SKOR AKHIR EXPERT ==========
 st.markdown("""
