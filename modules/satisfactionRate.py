@@ -65,7 +65,18 @@ def satisfaction_page():
         combined_df = combined_df[combined_df["Quarter"].isin(selectedQuarter)]
         # st.success(f"✅ Data berhasil digabungkan ({len(combined_df)} baris total)")
         st.dataframe(combined_df)
-        
+        st.markdown("""
+                <style>
+                div[data-baseweb="tab-list"] {
+                    justify-content: space-between; /* Membagi tab secara merata */
+                    width: 100%;
+                }
+                button[data-baseweb="tab"] {
+                    flex: 1; /* Membuat tiap tab memiliki lebar sama */
+                    max-width: 100%;
+                }
+                </style>
+            """, unsafe_allow_html=True)
         tab1, tab2= st.tabs(["Overview", "Detail"])
         with tab2:
             st.markdown("---")
@@ -194,7 +205,12 @@ def satisfaction_page():
             with tab1:        
                 # --- 📈 RESUME SECTION ---
                 st.markdown("---")
-                st.header("📊 Resume Keseluruhan")
+                st.markdown(
+                    """
+                    <h1 style='text-align: center;'>Overview</h1>
+                    """,
+                    unsafe_allow_html=True
+                )
 
                 # --- Persiapan Data ---
                 resume_df = combined_df.copy()
@@ -208,62 +224,68 @@ def satisfaction_page():
                 grafik_df = combined_df[["Event", "Unit"]].copy()
                 event_count = grafik_df.groupby("Unit")["Event"].nunique().reset_index()
                 event_count.columns = ["unit", "jumlah_event"]
-
+                st.markdown(
+                    """
+                    <h2 style='text-align: center;'>Jumlah Pelatihan per Unit</h2>
+                    """,
+                    unsafe_allow_html=True
+                )
+                colA1, colA2 = st.columns(2)
+                with colA1:
                 # --- Grafik 1: Jumlah Pelatihan per Unit ---
-                st.subheader("📊 Grafik Jumlah Pelatihan per Unit")
+                    unit_count = resume_df.groupby("Unit", as_index=False)["Event"].nunique()
+                    unit_count = unit_count.rename(columns={"Event": "Jumlah Pelatihan"})
 
-                unit_count = resume_df.groupby("Unit", as_index=False)["Event"].nunique()
-                unit_count = unit_count.rename(columns={"Event": "Jumlah Pelatihan"})
+                    st.bar_chart(event_count.set_index("unit")["jumlah_event"])
+                    # st.bar_chart(unit_count.set_index("Unit")["Jumlah Pelatihan"])
+                with colA2:
+                    # st.dataframe(unit_count, use_container_width=True)
+                    st.dataframe(event_count, use_container_width=True)
+                colB1, colB2 = st.columns(2)
+                
+                with colB1:
+                    # --- Table 1: Nilai Rata-rata per Event ---
+                    st.subheader("🧾Nilai Rata-rata per Event")
 
-                st.bar_chart(event_count.set_index("unit")["jumlah_event"])
-                # st.bar_chart(unit_count.set_index("Unit")["Jumlah Pelatihan"])
+                    if resume_df["is_numeric"].any():
+                        table1 = (
+                            resume_df[resume_df["is_numeric"]]
+                            .groupby(["Event", "Unit"], as_index=False)["Answer_Numeric"]
+                            .mean()
+                        )
+                        table1["NILAI AVERAGE"] = table1["Answer_Numeric"] * 10
+                        table1 = table1.reset_index().rename(
+                            columns={
+                                "index": "NO",
+                                "Event": "NAMA EVENT",
+                                "Unit": "UNIT"
+                            }
+                        )[["NO", "NAMA EVENT", "UNIT", "NILAI AVERAGE"]]
 
-                st.markdown("#### 📋 Tabel Jumlah Pelatihan per Unit")
-                # st.dataframe(unit_count, use_container_width=True)
-                st.dataframe(event_count, use_container_width=True)
+                        st.dataframe(table1, use_container_width=True)
+                    else:
+                        st.info("Tidak ada data numerik untuk menghitung rata-rata per event.")
+                with colB2:
+                    # --- Table 2: Nilai Rata-rata per Pertanyaan ---
+                    st.subheader("🧩Nilai Rata-rata per Pertanyaan")
 
-                # --- Table 1: Nilai Rata-rata per Event ---
-                st.subheader("🧾 Table 1: Nilai Rata-rata per Event")
+                    if resume_df["is_numeric"].any():
+                        table2 = (
+                            resume_df[resume_df["is_numeric"]]
+                            .groupby("Question", as_index=False)["Answer_Numeric"]
+                            .mean()
+                        )
+                        table2["NILAI AVERAGE PERTANYAAN"] = table2["Answer_Numeric"] * 10
+                        table2 = table2.reset_index().rename(
+                            columns={
+                                "index": "NO",
+                                "Question": "PERTANYAAN UBPP"
+                            }
+                        )[["NO", "PERTANYAAN UBPP", "NILAI AVERAGE PERTANYAAN"]]
 
-                if resume_df["is_numeric"].any():
-                    table1 = (
-                        resume_df[resume_df["is_numeric"]]
-                        .groupby(["Event", "Unit"], as_index=False)["Answer_Numeric"]
-                        .mean()
-                    )
-                    table1["NILAI AVERAGE"] = table1["Answer_Numeric"] * 10
-                    table1 = table1.reset_index().rename(
-                        columns={
-                            "index": "NO",
-                            "Event": "NAMA EVENT",
-                            "Unit": "UNIT"
-                        }
-                    )[["NO", "NAMA EVENT", "UNIT", "NILAI AVERAGE"]]
-
-                    st.dataframe(table1, use_container_width=True)
-                else:
-                    st.info("Tidak ada data numerik untuk menghitung rata-rata per event.")
-
-                # --- Table 2: Nilai Rata-rata per Pertanyaan ---
-                st.subheader("🧩 Table 2: Nilai Rata-rata per Pertanyaan")
-
-                if resume_df["is_numeric"].any():
-                    table2 = (
-                        resume_df[resume_df["is_numeric"]]
-                        .groupby("Question", as_index=False)["Answer_Numeric"]
-                        .mean()
-                    )
-                    table2["NILAI AVERAGE PERTANYAAN"] = table2["Answer_Numeric"] * 10
-                    table2 = table2.reset_index().rename(
-                        columns={
-                            "index": "NO",
-                            "Question": "PERTANYAAN UBPP"
-                        }
-                    )[["NO", "PERTANYAAN UBPP", "NILAI AVERAGE PERTANYAAN"]]
-
-                    st.dataframe(table2, use_container_width=True)
-                else:
-                    st.info("Tidak ada data numerik untuk menghitung rata-rata per pertanyaan.")
+                        st.dataframe(table2, use_container_width=True)
+                    else:
+                        st.info("Tidak ada data numerik untuk menghitung rata-rata per pertanyaan.")
 
                 # --- Table 3: Rekap skor expert seluruh event ---
                 st.subheader("Table 3: Rekap Skor Expert seluruh event")

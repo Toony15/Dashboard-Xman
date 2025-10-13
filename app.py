@@ -46,12 +46,12 @@ with st.sidebar:
     st.header("Menu Utama")
     menu = st.radio(
         "Pilih Halaman:",
-        ["Satisfaction", "Learning Hour", "Variation", "Compensation", "Data Manager"],
+        ["Learning Impact 1", "Learning Hour", "Variation", "Compensation", "Data Manager"],
         label_visibility="collapsed"
     )
 
 # --- 🚦 Routing Halaman ---
-if menu == "Satisfaction":
+if menu == "Learning Impact 1":
     satisfaction_page()
 elif menu == "Learning Hour":
     learning_hour_page()
