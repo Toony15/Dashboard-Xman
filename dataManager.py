@@ -3,85 +3,105 @@ import streamlit as st
 import pandas as pd
 from dbConfig import get_db_connection
 import io
-import st_aggrid
 from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
-
-def init_aggrid(df, grid_key=None, thousand_columns=[], use_selection=False, height=600, width='100%', selection_mode='single'):
-    """
-        click_event_callback (callable, optional): A function to be called when a row is clicked.
-        returns the [_, selected_row] -> selected_row is a filtered df
-    """
-    if df is None or len(df)==0 or df.empty:
-        st.write("No data to show")
-        return None,None
-
-    # Round numeric columns to 3 decimal places
-    df = df.copy()
-    numeric_cols = df.select_dtypes(include='number').columns
-    df[numeric_cols] = df[numeric_cols].round(3)
-
-    gb = GridOptionsBuilder.from_dataframe(df)
-    gb.configure_grid_options(domLayout='normal')
-
-    if use_selection:
-        gb.configure_selection(selection_mode=selection_mode, use_checkbox=False, groupSelectsChildren=False)
-    
-    k_sep_formatter = st_aggrid.JsCode("""
-        function(params) {
-            return (params.value == null) ? params.value : params.value.toLocaleString(); 
-        }
-    """)
-    gb.configure_columns(thousand_columns, valueFormatter=k_sep_formatter)
-
-    gridOptions = gb.build()
-
-    # Inject inline CSS for font size
-    gridOptions['domLayout'] = 'normal' # Ensure layout is normal
-    gridOptions['rowHeight'] = 33
-    gridOptions['defaultColDef'] = {
-        'cellStyle': {
-            'font-size': '15px',
-        },
-        'headerClass': 'ag-header-cell',
-        'resizable': True,
-    }
-    gridOptions['autoSizeStrategy'] = {
-        'type': 'fitGridWidth',
-        'defaultMinWidth': 190,
-    }
-    
-    grid_response = AgGrid(
-        df,
-        gridOptions=gridOptions,
-        height=height,
-        width=width,
-        update_mode=GridUpdateMode.SELECTION_CHANGED | GridUpdateMode.MODEL_CHANGED,
-        data_return_mode='AS_INPUT',
-        allow_unsafe_jscode=True,
-        key=grid_key,
-        #columns_auto_size_mode=ColumnsAutoSizeMode.FIT_CONTENTS,
-        enable_enterprise_modules=False
-    )
-
-    selected_row = None
-    print(grid_response)
-    if grid_response['selected_rows'] is not None and len(grid_response['selected_rows']) > 0:
-        selected_row = grid_response['selected_rows']
-        selected_row = selected_row.to_dict(orient='records')
-    
-
-    csv = df.to_csv(index=False)
-    st.download_button(
-        label="📥 Download CSV",
-        data=csv,
-        file_name="data_export.csv",
-        mime="text/csv",
-    )
-    return [grid_response,selected_row]
-
+from st_aggrid import GridUpdateMode
 
 
 def show_data_manager():
+    def init_aggrid(
+    df, 
+    grid_key=None, 
+    thousand_columns=[], 
+    use_selection=False, 
+    height=600, 
+    width='100%', 
+    selection_mode='single'
+    ):
+        """
+        Menampilkan dataframe dalam tabel interaktif AG Grid.
+        Mengembalikan [grid_response, selected_row].
+        """
+
+        # 🧱 Validasi data
+        if df is None or df.empty:
+            st.info("Tidak ada data untuk ditampilkan.")
+            return None, None
+
+        # 🔢 Pembulatan angka
+        df = df.copy()
+        numeric_cols = df.select_dtypes(include='number').columns
+        df[numeric_cols] = df[numeric_cols].round(3)
+
+        # 🧩 Setup Grid
+        gb = GridOptionsBuilder.from_dataframe(df)
+        gb.configure_grid_options(domLayout='normal')
+
+        if use_selection:
+            gb.configure_selection(
+                selection_mode=selection_mode,
+                use_checkbox=False,
+                groupSelectsChildren=False
+            )
+
+        # 💬 Format angka ribuan (jika diperlukan)
+        if thousand_columns:
+            gb.configure_columns(thousand_columns, valueFormatter="""
+                function(params) {
+                    return (params.value == null) ? params.value : params.value.toLocaleString();
+                }
+            """)
+
+        # ⚙️ Build opsi grid
+        gridOptions = gb.build()
+        gridOptions['domLayout'] = 'normal'
+        gridOptions['rowHeight'] = 33
+        gridOptions['defaultColDef'] = {
+            'cellStyle': {'font-size': '15px'},
+            'headerClass': 'ag-header-cell',
+            'resizable': True,
+        }
+        gridOptions['autoSizeStrategy'] = {
+            'type': 'fitGridWidth',
+            'defaultMinWidth': 190,
+        }
+
+        # 🧾 Render grid
+        grid_response = AgGrid(
+            df,
+            gridOptions=gridOptions,
+            height=height,
+            width=width,
+            update_mode=GridUpdateMode.SELECTION_CHANGED | GridUpdateMode.VALUE_CHANGED,
+            data_return_mode='AS_INPUT',
+            allow_unsafe_jscode=True,
+            key=grid_key,
+            enable_enterprise_modules=False
+        )
+
+        # ✅ Ambil baris yang dipilih
+        selected_row = None
+        if grid_response is not None and len(grid_response.get('selected_rows', [])) > 0:
+            selected_row = pd.DataFrame(grid_response['selected_rows'])
+            selected_row_df = pd.DataFrame(grid_response['selected_rows'])
+            selected_id = selected_row_df['id'].iloc[0]  # ambil scalar
+            selected_row = df[df["id"] == selected_id].iloc[0]
+            # selected_id = selected_row.iloc[0]['id'] if 'id' in selected_row.columns else None
+        else:
+            selected_row, selected_id = None, None
+
+        # 💾 Tombol download
+        csv = df.to_csv(index=False)
+        st.download_button(
+            label="📥 Download CSV",
+            data=csv,
+            file_name="data_export.csv",
+            mime="text/csv",
+        )
+
+        return grid_response, selected_row, selected_id
+    
+    
+    
     st.title("🗃️ Data Manager")
     supabase = get_db_connection()
     options = ["Upload Data", "Lihat Data", "Edit Data"]
@@ -238,7 +258,9 @@ def show_data_manager():
 
             # # Ambil data baris terpilih
             # selected_row = df[df["id"] == selected_id].iloc[0]
-            _, selected_row = init_aggrid(df,use_selection=True,selection_mode='single')
+            _, selected_row, selected_id= init_aggrid(df,use_selection=True,selection_mode='single')
+            # selected_id = selectedRow["id"]
+            # selected_row = df[df["id"] == selected_id].iloc[0]
             st.markdown("### 📝 Ubah Data")
             updated_data = {}
             editContainer = st.container(
