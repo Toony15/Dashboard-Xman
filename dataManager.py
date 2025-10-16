@@ -241,6 +241,7 @@ def show_data_manager():
             if all_data:
                 combined = pd.concat(all_data, ignore_index=True)
                 combined["Event"] = combined["Event"].fillna("").astype(str).str.strip()
+                combined = combined.fillna("empty").replace("", "empty")
                 return combined
             else:
                 return pd.DataFrame()
@@ -264,13 +265,34 @@ def show_data_manager():
 
                 # Upload baris demi baris ke tabel Supabase
                 data = df.to_dict(orient="records")
-                for row in data:
-                    supabase.table(DestinationTable).insert(row).execute()
+                total_rows = len(data)
 
-                st.success(f"✅ Berhasil upload {len(data)} baris ke tabel '{DestinationTable}'")
-                st.dataframe(df)
+                if total_rows == 0:
+                    st.warning("⚠️ Tidak ada data untuk diupload.")
+                else:
+                    st.info(f"⏳ Mengupload {total_rows} baris ke tabel '{DestinationTable}'...")
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
+
+                    # Upload satu per satu dengan progress bar
+                    for i, row in enumerate(data, start=1):
+                        try:
+                            supabase.table(DestinationTable).insert(row).execute()
+                        except Exception as e:
+                            st.error(f"❌ Gagal upload baris ke-{i}: {e}")
+                            continue
+
+                        progress = int(i / total_rows * 100)
+                        progress_bar.progress(progress)
+                        status_text.text(f"📤 Upload progress: {i}/{total_rows} baris ({progress}%)")
+
+                    progress_bar.empty()
+                    status_text.text("✅ Upload selesai.")
+                    st.success(f"Berhasil upload {total_rows} baris ke tabel '{DestinationTable}'")
+                    st.dataframe(df)
+
             except Exception as e:
-                st.error(f"Gagal upload: {e}")
+                st.error(f"❌ Gagal upload: {e}")
 
     # --- 🔵 READ DATA ---
     elif menu == "Lihat Data":
