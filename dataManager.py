@@ -258,27 +258,27 @@ def show_data_manager():
                     DestinationTable = "learningImpact1"
                 else:
                     viewTable = "none"
-                # Simpan hasil upload ke session_state agar tidak hilang setelah interaksi
-                if uploaded_file:
-                    st.session_state["combined_df"] = read_and_merge(uploaded_file, DestinationTable)
+                    # Simpan hasil upload ke session_state agar tidak hilang setelah interaksi
+                    if uploaded_file:
+                        st.session_state["combined_df"] = read_and_merge(uploaded_file, DestinationTable)
 
-                # Ambil data dari session_state
-                combined_df = st.session_state.get("combined_df", pd.DataFrame())
-                st.dataframe(combined_df)
+                    # Ambil data dari session_state
+                    combined_df = st.session_state.get("combined_df", pd.DataFrame())
+                    st.dataframe(combined_df)
 
-                if uploaded_file and st.button("Upload ke Database"):
-                    try:
-                        df = combined_df[["id","Email","Event","Question","Answer","Expert","Unit","Quarter"]]
+                    if uploaded_file and st.button("Upload ke Database"):
+                        try:
+                            df = combined_df[["id","Email","Event","Question","Answer","Expert","Unit","Quarter"]]
 
-                        # Upload baris demi baris ke tabel Supabase
-                        data = df.to_dict(orient="records")
-                        for row in data:
-                            supabase.table(DestinationTable).insert(row).execute()
+                            # Upload baris demi baris ke tabel Supabase
+                            data = df.to_dict(orient="records")
+                            for row in data:
+                                supabase.table(DestinationTable).insert(row).execute()
 
-                        st.success(f"✅ Berhasil upload {len(data)} baris ke tabel '{DestinationTable}'")
-                        st.dataframe(df)
-                    except Exception as e:
-                        st.error(f"Gagal upload: {e}")
+                            st.success(f"✅ Berhasil upload {len(data)} baris ke tabel '{DestinationTable}'")
+                            st.dataframe(df)
+                        except Exception as e:
+                            st.error(f"Gagal upload: {e}")
 
     # --- 🔵 READ DATA ---
     elif menu == "Lihat Data":
