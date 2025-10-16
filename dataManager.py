@@ -253,7 +253,6 @@ def show_data_manager():
             else:
                 st.warning("⚠️ Tidak ada data valid untuk digabungkan.")
                 return pd.DataFrame(columns=required_columns)
-
                 tableName = st.radio("Pilih destinasi:", ["Learning Impact 1", "Learning Hours", "Variation"])
                 if tableName == "Learning Impact 1":
                     DestinationTable = "learningImpact1"
