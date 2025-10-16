@@ -310,6 +310,7 @@ def satisfaction_page():
                     .rename(columns={"Answer_Numeric": "Average_Score"})
                 )
 
+
                 # Opsional: bulatkan dua angka di belakang koma
                 avg_score_per_expert["Average_Score"] = avg_score_per_expert["Average_Score"].round(2)
 
