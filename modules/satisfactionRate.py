@@ -101,7 +101,6 @@ def satisfaction_page():
                 st.dataframe(filtered_df)
                 
                 # --- 🔍 Rekap Umum Sebelum Dataframe Detail ---
-                qid_col = "Question ID"
                 qtext_col = "Question"
                 answer_col = "Answer"
                 expert_col = "Expert"
@@ -154,52 +153,70 @@ def satisfaction_page():
                 
                 #--- Tampilkan data per Expert ---
                 st.markdown("## 👨‍🏫 Rekap per Expert")
+                # --- Table 3: Rekap skor expert seluruh event ---
+                st.subheader("Table 3: Rekap Skor Expert seluruh event")
+                # ===== 🧠 FILTER EXPERT =====
+                experts = sorted(filtered_df["Expert"].dropna().unique())
+                # 🔹 Checkbox untuk memilih semua expert
+                select_all = st.checkbox("Pilih Semua Expert")
 
-                experts = sorted(filtered_df["Expert"].unique())
-
-                if not experts:
-                    st.info("Tidak ada data Expert dalam event ini.")
+                # 🔹 Jika dicentang, semua expert otomatis dipilih
+                if select_all:
+                    selected_experts = st.multiselect("👤 Pilih Expert", options=experts, default=experts)
                 else:
-                    selected_expert = st.selectbox(
-                        "Pilih Expert untuk ditampilkan:",
-                        options=experts,
-                        index=0,
-                        help="Pilih salah satu expert untuk melihat rekap datanya"
-                    )
+                    selected_experts = st.multiselect("👤 Pilih Expert", options=experts, default=experts[:1])                
 
-                    expert_df = filtered_df[filtered_df["Expert"] == selected_expert]
+                # Konversi kolom Answer menjadi numeric jika memungkinkan
+                combined_df["Answer_Numeric"] = pd.to_numeric(combined_df["Answer"], errors="coerce")
+                # Jika tidak ada expert dipilih, tampilkan peringatan
+                if not selected_experts:
+                    st.warning("⚠️ Silakan pilih minimal satu expert untuk ditampilkan.")
+                else:
+                    # Loop untuk setiap expert yang dipilih
+                    for expert in selected_experts:
+                        st.markdown(f"### 👤 Expert: **{expert}**")
 
-                    st.markdown(f"### 🔹 Expert: {selected_expert}")
+                        # Filter berdasarkan expert
+                        filtered_df = combined_df[combined_df["Expert"] == expert].copy()
+                        numeric_df = filtered_df.dropna(subset=["Answer_Numeric"]).copy()
 
-                    # Pisahkan jawaban numerik dan deskriptif
-                    numeric_df = expert_df[pd.to_numeric(expert_df["Answer"], errors="coerce").notna()].copy()
-                    text_df = expert_df[pd.to_numeric(expert_df["Answer"], errors="coerce").isna()].copy()
-
-                    # --- Table 1: Rekap Nilai Numerik ---
-                    if not numeric_df.empty:
-                        numeric_df["Answer"] = numeric_df["Answer"].astype(float)
-                        rekap_nilai = (
-                            numeric_df.groupby(["Question"], as_index=False)["Answer"]
+                        # Hitung rata-rata nilai per pertanyaan
+                        avg_per_question = (
+                            numeric_df.groupby("Question")["Answer_Numeric"]
                             .mean()
+                            .reset_index()
+                            .rename(columns={"Answer_Numeric": "Average_Score"})
                         )
-                        rekap_nilai["Nilai (x10)"] = rekap_nilai["Answer"] * 10
-                        rekap_nilai = rekap_nilai[["Question", "Nilai (x10)"]]
 
-                        st.markdown("##### 📊 Rekap Nilai (Pertanyaan Numerik)")
-                        st.dataframe(rekap_nilai, use_container_width=True)
-                    else:
-                        st.info("Tidak ada data numerik untuk expert ini.")
+                        # Kalikan dengan 10
+                        avg_per_question["Average_Score"] = avg_per_question["Average_Score"] * 10
 
-                    # --- Table 2: Rekap Jawaban Deskriptif ---
-                    if not text_df.empty:
-                        text_df = text_df.reset_index(drop=True)
-                        text_df.index += 1
-                        rekap_teks = text_df[["Answer"]].rename_axis("No").reset_index()
+                        # ========== CONTAINER 1 (Per Expert) ==========
+                        with st.container():
+                            sec1, sec2 = st.columns([2, 1])
 
-                        st.markdown("##### 💬 Rekap Jawaban Deskriptif")
-                        st.dataframe(rekap_teks, use_container_width=True)
-                    else:
-                        st.info("Tidak ada jawaban deskriptif untuk expert ini.")
+                            # 📊 Tabel rata-rata per pertanyaan
+                            with sec1:
+                                st.subheader("📊 Rata-rata Nilai per Pertanyaan (Numeric)")
+                                st.dataframe(avg_per_question, use_container_width=True)
+
+                            # 🎯 Scorecard rata-rata keseluruhan
+                            overall_avg = avg_per_question["Average_Score"].mean()
+                            with sec2:
+                                st.empty()
+                                st.markdown(
+                                    f"""
+                                    <div style='text-align: center; padding: 20px; border-radius: 10px; background-color: #1f2937;'>
+                                        <h3 style='color: white;'>🎯 Rata-rata Skor Keseluruhan</h3>
+                                        <h1 style='color: #4CAF50;'>{overall_avg:.2f}</h1>
+                                    </div>
+                                    """,
+                                    unsafe_allow_html=True
+                                )
+
+                        # Tambahkan garis pemisah antar expert
+                        st.markdown("---")
+                
             with tab1:        
                 # --- 📈 RESUME SECTION ---
                 st.markdown(
@@ -239,7 +256,6 @@ def satisfaction_page():
                     # st.dataframe(unit_count, use_container_width=True)
                     st.dataframe(event_count, use_container_width=True)
                 colB1, colB2 = st.columns(2)
-                
                 with colB1:
                     # --- Table 1: Nilai Rata-rata per Event ---
                     st.subheader("🧾Nilai Rata-rata per Event")
@@ -253,11 +269,10 @@ def satisfaction_page():
                         table1["NILAI AVERAGE"] = table1["Answer_Numeric"] * 10
                         table1 = table1.reset_index().rename(
                             columns={
-                                "index": "NO",
                                 "Event": "NAMA EVENT",
                                 "Unit": "UNIT"
                             }
-                        )[["NO", "NAMA EVENT", "UNIT", "NILAI AVERAGE"]]
+                        )[["NAMA EVENT", "UNIT", "NILAI AVERAGE"]]
 
                         st.dataframe(table1, use_container_width=True)
                     else:
@@ -286,66 +301,20 @@ def satisfaction_page():
 
                 # --- Table 3: Rekap skor expert seluruh event ---
                 st.subheader("Table 3: Rekap Skor Expert seluruh event")
-                # ===== 🧠 FILTER EXPERT =====
-                experts = sorted(combined_df["Expert"].dropna().unique())
-                selected_expert = st.selectbox("👤 Pilih Expert", ["Semua"] + experts)
-                
-
-                # Konversi kolom Answer menjadi numeric jika memungkinkan
-                combined_df["Answer_Numeric"] = pd.to_numeric(combined_df["Answer"], errors="coerce")
-
-                # ===== 1️⃣ TABLE NUMERIC =====
-                 # Filter berdasarkan expert yang dipilih
-                if selected_expert != "Semua":
-                    filtered_df = combined_df[combined_df["Expert"] == selected_expert]
-                else:
-                    filtered_df = combined_df.copy()
-                numeric_df = filtered_df.dropna(subset=["Answer_Numeric"]).copy()
-
-                # Hitung rata-rata nilai per pertanyaan
-                avg_per_question = (
-                    numeric_df.groupby("Question")["Answer_Numeric"]
+                numeric_df = resume_df[resume_df["is_numeric"]].copy()
+                # Hitung rata-rata skor per expert
+                avg_score_per_expert = (
+                    numeric_df.groupby("Expert")["Answer_Numeric"]
                     .mean()
                     .reset_index()
                     .rename(columns={"Answer_Numeric": "Average_Score"})
                 )
 
-                # Kalikan dengan 10
-                avg_per_question["Average_Score"] = avg_per_question["Average_Score"] * 10
+                # Opsional: bulatkan dua angka di belakang koma
+                avg_score_per_expert["Average_Score"] = avg_score_per_expert["Average_Score"].round(2)
 
-                # Tampilkan tabel rata-rata
-                st.subheader("📊 Rata-rata Nilai per Pertanyaan (Numeric)")
-                st.dataframe(avg_per_question, use_container_width=True)
-
-                # ===== 2️⃣ SCORECARD (Rata-rata Keseluruhan) =====
-                overall_avg = avg_per_question["Average_Score"].mean()
-
-                # Tampilkan sebagai scorecard di tengah
-                st.markdown(
-                    f"""
-                    <div style='text-align: center; padding: 20px; border-radius: 10px; background-color: #1f2937;'>
-                        <h3 style='color: white;'>🎯 Rata-rata Skor Keseluruhan</h3>
-                        <h1 style='color: #4CAF50;'>{overall_avg:.2f}</h1>
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
-                # st.subheader("Table 3: Rekap Skor Expert seluruh event")
-                # combined_df["Answer_Numeric"] = pd.to_numeric(combined_df["Answer"], errors="coerce")
-
-                # # ===== 1️⃣ TABLE NUMERIC =====
-                # numeric_df = combined_df.dropna(subset=["Answer_Numeric"]).copy()
-
-                # # Hitung rata-rata nilai per pertanyaan
-                # avg_per_question = (
-                #     numeric_df.groupby("Question")["Answer_Numeric"]
-                #     .mean()
-                #     .reset_index()
-                #     .rename(columns={"Answer_Numeric": "Average_Score"})
-                # )
-
-                # st.subheader("📊 Rata-rata Nilai per Pertanyaan (Numeric)")
-                # st.dataframe(avg_per_question, use_container_width=True)
+                # Tampilkan hasil
+                st.dataframe(avg_score_per_expert)
 
                 # ===== 2️⃣ TABLE NON-NUMERIC =====
                 non_numeric_df = combined_df[combined_df["Answer_Numeric"].isna()].copy()
