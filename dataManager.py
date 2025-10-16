@@ -168,10 +168,9 @@ def show_data_manager():
         
         def read_and_merge(files, table_name):
             all_data = []
-
             # 1️⃣ Ambil ID terakhir dari database
             try:
-                response = supabase.table(table_name).select("id").order("id", desc=False).limit(1).execute()
+                response = supabase.table(table_name).select("id").order("id", desc=True).limit(1).execute()
                 if response.data:
                     last_id = response.data[0]["id"]
                 else:
@@ -180,105 +179,98 @@ def show_data_manager():
                 st.warning(f"Gagal mengambil ID terakhir dari database: {e}")
                 last_id = 0
 
-            id_counter = last_id + 1
-
+            id_counter = last_id + 1  # mulai dari id terakhir + 1
             # 2️⃣ Peta kolom alternatif ke nama sesuai DB Supabase
             column_mapping = {
                 "id": "id",
                 "email": "Email",
-                "Email": "Email",
+                "email address": "Email",
                 "alamat email": "Email",
                 "event": "Event",
                 "acara": "Event",
                 "training": "Event",
                 "question": "Question",
-                "cleaned_question": "Question",
+                "pertanyaan": "Question",
                 "soal": "Question",
                 "answer": "Answer",
                 "jawaban": "Answer",
-                "cleaned_answer": "Answer",
+                "response": "Answer",
                 "expert": "Expert",
                 "narasumber": "Expert",
                 "pembicara": "Expert",
                 "unit": "Unit",
                 "departemen": "Unit",
                 "bagian": "Unit",
-                "quarter": "Quarter"
+                "quarter": "Quarter",
+                "periode": "Quarter",
+                "kuartal": "Quarter",
             }
-
             # 3️⃣ Kolom target sesuai tabel Supabase
             required_columns = ["id", "Email", "Event", "Question", "Answer", "Expert", "Unit", "Quarter"]
-
             for uploaded_file in files:
                 try:
                     df = pd.read_excel(uploaded_file)
                 except Exception as e:
-                    st.error(f"❌ Gagal membaca file {uploaded_file.name}: {e}")
+                    st.error(f"Gagal membaca file {uploaded_file.name}: {e}")
                     continue
-
                 # Normalisasi nama kolom → lowercase dan strip spasi
                 df.columns = [col.strip().lower() for col in df.columns]
 
                 # Mapping nama kolom agar cocok dengan struktur Supabase
                 df.rename(columns=lambda c: column_mapping.get(c.lower(), c), inplace=True)
 
-                # Tambahkan kolom metadata dari nama file
+                # Ambil nama file tanpa ekstensi
                 file_name = uploaded_file.name.rsplit(".", 1)[0]
                 parts = file_name.split("_")
                 event, expert, unit, quarter = (parts + ["", "", "", ""])[:4]
-
-                df["Event"] = event or df.get("Event", "")
-                df["Expert"] = expert or df.get("Expert", "")
-                df["Unit"] = unit or df.get("Unit", "")
-                df["Quarter"] = quarter or df.get("Quarter", "")
-
+                
                 # Isi kolom yang hilang agar tetap sesuai struktur tabel
                 for col in required_columns:
                     if col not in df.columns:
                         df[col] = ""
 
-                # Tambahkan kolom ID unik
+                # Tambahkan kolom metadata
+                df["Event"] = event
+                df["Expert"] = expert
+                df["Unit"] = unit
+                df["Quarter"] = quarter
                 df["id"] = range(id_counter, id_counter + len(df))
                 id_counter += len(df)
+                all_data.append(df)
 
-                # Simpan ke daftar
-                all_data.append(df[required_columns])
-
-            # Gabungkan semua file
             if all_data:
                 combined = pd.concat(all_data, ignore_index=True)
-                combined = combined[required_columns]  # pastikan urutan kolom sama
-                st.success(f"✅ {len(combined)} baris data berhasil diproses dan disesuaikan dengan struktur Supabase.")
+                combined["Event"] = combined["Event"].fillna("").astype(str).str.strip()
                 return combined
             else:
-                st.warning("⚠️ Tidak ada data valid untuk digabungkan.")
-                return pd.DataFrame(columns=required_columns)
-                tableName = st.radio("Pilih destinasi:", ["Learning Impact 1", "Learning Hours", "Variation"])
-                if tableName == "Learning Impact 1":
-                    DestinationTable = "learningImpact1"
-                else:
-                    viewTable = "none"
-                    # Simpan hasil upload ke session_state agar tidak hilang setelah interaksi
-                    if uploaded_file:
-                        st.session_state["combined_df"] = read_and_merge(uploaded_file, DestinationTable)
+                return pd.DataFrame()
 
-                    # Ambil data dari session_state
-                    combined_df = st.session_state.get("combined_df", pd.DataFrame())
-                    st.dataframe(combined_df)
+        tableName = st.radio("Pilih destinasi:", ["Learning Impact 1", "Learning Hours", "Variation"])
+        if tableName == "Learning Impact 1":
+            DestinationTable = "learningImpact1"
+        else:
+            viewTable = "none"
+        # Simpan hasil upload ke session_state agar tidak hilang setelah interaksi
+        if uploaded_file:
+            st.session_state["combined_df"] = read_and_merge(uploaded_file, DestinationTable)
 
-                    if uploaded_file and st.button("Upload ke Database"):
-                        try:
-                            df = combined_df[["id","Email","Event","Question","Answer","Expert","Unit","Quarter"]]
+        # Ambil data dari session_state
+        combined_df = st.session_state.get("combined_df", pd.DataFrame())
+        st.dataframe(combined_df)
 
-                            # Upload baris demi baris ke tabel Supabase
-                            data = df.to_dict(orient="records")
-                            for row in data:
-                                supabase.table(DestinationTable).insert(row).execute()
+        if uploaded_file and st.button("Upload ke Database"):
+            try:
+                df = combined_df[["id","Email","Event","Question","Answer","Expert","Unit","Quarter"]]
 
-                            st.success(f"✅ Berhasil upload {len(data)} baris ke tabel '{DestinationTable}'")
-                            st.dataframe(df)
-                        except Exception as e:
-                            st.error(f"Gagal upload: {e}")
+                # Upload baris demi baris ke tabel Supabase
+                data = df.to_dict(orient="records")
+                for row in data:
+                    supabase.table(DestinationTable).insert(row).execute()
+
+                st.success(f"✅ Berhasil upload {len(data)} baris ke tabel '{DestinationTable}'")
+                st.dataframe(df)
+            except Exception as e:
+                st.error(f"Gagal upload: {e}")
 
     # --- 🔵 READ DATA ---
     elif menu == "Lihat Data":
