@@ -5,6 +5,7 @@ from dbConfig import get_db_connection
 import io
 from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 from st_aggrid import GridUpdateMode
+from modules.lim1DataManager import uploadLim1
 
 supabase = get_db_connection()
 def load_all_data(table_name, batch_size=1000):
@@ -180,33 +181,31 @@ def show_data_manager():
                 last_id = 0
 
             id_counter = last_id + 1  # mulai dari id terakhir + 1
+            
             # 2️⃣ Peta kolom alternatif ke nama sesuai DB Supabase
-            column_mapping = {
-                "id": "id",
-                "email": "Email",
-                "email address": "Email",
-                "Email": "Email",
-                "event": "Event",
-                "acara": "Event",
-                "training": "Event",
-                "question": "Question",
-                "cleaned_question": "Question",
-                "soal": "Question",
-                "answer": "Answer",
-                "cleaned_answer": "Answer",
-                "response": "Answer",
-                "expert": "Expert",
-                "narasumber": "Expert",
-                "pembicara": "Expert",
-                "unit": "Unit",
-                "departemen": "Unit",
-                "bagian": "Unit",
-                "quarter": "Quarter",
-                "periode": "Quarter",
-                "kuartal": "Quarter",
-            }
-            # 3️⃣ Kolom target sesuai tabel Supabase
-            required_columns = ["id", "Email", "Event", "Question", "Answer", "Expert", "Unit", "Quarter"]
+            if table_name == "learningImpact1":
+                column_mapping = {
+                    "id": "id",
+                    "email": "Email",
+                    "email address": "Email",
+                    "Email": "Email",
+                    "question": "Question",
+                    "cleaned_question": "Question",
+                    "soal": "Question",
+                    "answer": "Answer",
+                    "cleaned_answer": "Answer",
+                    "response": "Answer",
+                }
+                # 3️⃣ Kolom target sesuai tabel Supabase
+                required_columns = ["id", "Email", "Event", "Question", "Answer", "Expert", "Unit", "Quarter"]
+            elif table_name == "learningHours":
+                column_mapping = {
+                    "id":"id"
+                }
+            elif table_name == "event":
+                column_mapping = {
+                    "id":"id"
+                }
             for uploaded_file in files:
                 try:
                     df = pd.read_excel(uploaded_file)
@@ -249,50 +248,21 @@ def show_data_manager():
         tableName = st.radio("Pilih destinasi:", ["Learning Impact 1", "Learning Hours", "Variation"])
         if tableName == "Learning Impact 1":
             DestinationTable = "learningImpact1"
-        else:
+             # Simpan hasil upload ke session_state agar tidak hilang setelah interaksi
+            if uploaded_file:
+                st.session_state["combined_df"] = read_and_merge(uploaded_file, DestinationTable)
+            # Ambil data dari session_state
+            combined_df = st.session_state.get("combined_df", pd.DataFrame())
+            st.dataframe(combined_df)
+            if uploaded_file and st.button("Upload ke Database"):
+                try:
+                    uploadLim1(combined_df, DestinationTable, supabase)
+                except Exception as e:
+                    st.error(f"❌ Gagal upload: {e}")
+        elif tableName == "Learning Hours":
             viewTable = "none"
-        # Simpan hasil upload ke session_state agar tidak hilang setelah interaksi
-        if uploaded_file:
-            st.session_state["combined_df"] = read_and_merge(uploaded_file, DestinationTable)
-
-        # Ambil data dari session_state
-        combined_df = st.session_state.get("combined_df", pd.DataFrame())
-        st.dataframe(combined_df)
-
-        if uploaded_file and st.button("Upload ke Database"):
-            try:
-                df = combined_df[["id","Email","Event","Question","Answer","Expert","Unit","Quarter"]]
-
-                # Upload baris demi baris ke tabel Supabase
-                data = df.to_dict(orient="records")
-                total_rows = len(data)
-
-                if total_rows == 0:
-                    st.warning("⚠️ Tidak ada data untuk diupload.")
-                else:
-                    st.info(f"⏳ Mengupload {total_rows} baris ke tabel '{DestinationTable}'...")
-                    progress_bar = st.progress(0)
-                    status_text = st.empty()
-
-                    # Upload satu per satu dengan progress bar
-                    for i, row in enumerate(data, start=1):
-                        try:
-                            supabase.table(DestinationTable).insert(row).execute()
-                        except Exception as e:
-                            st.error(f"❌ Gagal upload baris ke-{i}: {e}")
-                            continue
-
-                        progress = int(i / total_rows * 100)
-                        progress_bar.progress(progress)
-                        status_text.text(f"📤 Upload progress: {i}/{total_rows} baris ({progress}%)")
-
-                    progress_bar.empty()
-                    status_text.text("✅ Upload selesai.")
-                    st.success(f"Berhasil upload {total_rows} baris ke tabel '{DestinationTable}'")
-                    st.dataframe(df)
-
-            except Exception as e:
-                st.error(f"❌ Gagal upload: {e}")
+        elif tableName == "Variation":
+            DestinationTable = "none"
 
     # --- 🔵 READ DATA ---
     elif menu == "Lihat Data":
