@@ -271,6 +271,8 @@ def show_data_manager():
         tableName = st.pills("Action", optionRead, selection_mode="single", default="Learning Impact 1")
         if tableName == "Learning Impact 1":
             viewTable = "learningImpact1"
+        elif tableName == "Learning Hours":
+            viewTable = "learningHour"
         else:
             viewTable = "none"
 
