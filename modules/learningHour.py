@@ -36,7 +36,7 @@ def learning_hour_page():
     
     st.title("Learning Hours")  
     options = ["Upload file","From Data Base"]
-    mode = st.pills("Data Resource", options, selection_mode="single", default="Upload file")
+    mode = st.pills("Data Resource", options, selection_mode="single", default="From Data Base")
     if mode == "Upload file":   
         st.header("📊 Upload File")
 
@@ -71,7 +71,22 @@ def learning_hour_page():
                 </style>
             """, unsafe_allow_html=True)
     st.empty
-    
+    filter=["All", "LIM 1"]
+    filter = st.pills("Filter", filter, selection_mode="single", default="All")
+    if filter == "LIM 1":
+        event_df = load_all_data("learningImpact1")
+        unique_events = event_df["Event"].dropna().unique().tolist()
+        st.write("📅 Daftar Event LIM 1:")
+        unique_events_df = pd.DataFrame({
+            "Event": unique_events
+        })
+        unique_events_df.index = range(1, len(unique_events_df) + 1)
+        unique_events_df.index.name = "No"
+        st.dataframe(unique_events_df, use_container_width=True)
+        valid_events = unique_events_df["Event"].unique()
+        # Filter combined_df agar hanya berisi event yang ada di unique_events_df
+        combined_df = combined_df[combined_df["Event"].isin(valid_events)].reset_index(drop=True)
+
     # Mapping bobot berdasarkan kolom Variasi
     bobot_map = {
         "Coaching (Coach)/Mentoring (Mentor)": 1.5,
