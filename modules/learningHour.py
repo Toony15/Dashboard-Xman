@@ -70,4 +70,56 @@ def learning_hour_page():
                 }
                 </style>
             """, unsafe_allow_html=True)
+    st.empty
+    
+    # Mapping bobot berdasarkan kolom Variasi
+    bobot_map = {
+        "Coaching (Coach)/Mentoring (Mentor)": 1.5,
+        "Expert Insight (Pembicara)": 1.3,
+        "Teaching": 1.4,
+        "Learning Content Designer/Developer": 1.5,
+        "Publikasi Artikel/Video/Podcast": 1.1,
+        "Penguji/Assessor": 1.2
+    }
+
+    # 1️⃣ Tambahkan kolom bobot berdasarkan Variasi
+    combined_df["bobot"] = combined_df["Variasi"].map(bobot_map)
+
+    # 2️⃣ Hitung kolom poin_lh
+    combined_df["poin_lh"] = combined_df["LH"] * combined_df["bobot"]
+
+    # 3️⃣ Hitung total poin tertinggi antar expert
+    total_poin_per_expert = combined_df.groupby("Expert")["poin_lh"].sum().reset_index(name="total_poin")
+    poin_tertinggi = total_poin_per_expert["total_poin"].max()
+
+    # 4️⃣ Merge kembali ke combined_df
+    combined_df = combined_df.merge(total_poin_per_expert, on="Expert", how="left")
+
+    # 5️⃣ Hitung skor normalisasi
+    combined_df["skor"] = (combined_df["total_poin"] / poin_tertinggi) * 100
+
+    # 6️⃣ Tampilkan hasil
+    st.dataframe(combined_df[["Expert", "Event", "Variasi", "LH", "bobot", "poin_lh", "total_poin", "skor"]])
+    
+    # === 🔹 Buat DataFrame Rekap per Expert ===
+    rekap_expert = (
+        combined_df.groupby("Expert", as_index=False)
+        .agg({"poin_lh": "sum"})
+        .rename(columns={"poin_lh": "total_poin"})
+    )
+
+    # Hitung total poin tertinggi
+    poin_tertinggi = rekap_expert["total_poin"].max()
+
+    # Hitung skor normalisasi (seperti di formula)
+    rekap_expert["skor"] = (rekap_expert["total_poin"] / poin_tertinggi) * 100
+
+    # Urutkan dari skor tertinggi ke terendah
+    rekap_expert = rekap_expert.sort_values(by="skor", ascending=False).reset_index(drop=True)
+
+    # === 🔹 Tampilkan hasil rekap ===
+    st.subheader("📋 Rekap Total Poin & Skor per Expert")
+    st.dataframe(rekap_expert, use_container_width=True)
+
+
         
