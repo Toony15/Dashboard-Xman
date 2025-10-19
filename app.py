@@ -14,12 +14,6 @@ st.markdown(
             """,
             unsafe_allow_html=True
         )
-# st.set_page_config(
-#     page_title="Expert Evaluation Dashboard",
-#     layout="wide",
-#     initial_sidebar_state="expanded"
-# )
-
 # --- Sidebar ---
 with st.sidebar:
     st.logo("assets/xman.png", size="large")
@@ -31,18 +25,6 @@ with st.sidebar:
             st.image(logo1, width=32)
         st.header("Telkom CorpU")
     st.link_button("Cek Dokumentasi", "https://www.openai.com")
-    # try:
-    #     col1, col2 = st.columns(2)
-    #     with col1:
-    #         logo1 = 'assets/Logo EXMAN Mentah.png'
-    #         if os.path.exists(logo1):
-    #             st.image(logo1, width=80)
-    #     with col2:
-    #         logo2 = 'assets/telkomcorpu_logo.png'
-    #         if os.path.exists(logo2):
-    #             st.image(logo2, width=80)
-    # except Exception as e:
-    #     st.write(f"Error loading logos: {e}")
 
 st.set_page_config(
     page_title="Expert Evaluation Dashboard",
