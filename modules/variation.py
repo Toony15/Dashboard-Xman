@@ -158,8 +158,8 @@ def variation_page():
     """
     st.title("Parameter 3 — Poin Variasi Penugasan")
     st.markdown(
-        "Pilih sumber data. Mode 'From Data Base' hanya mengambil data dari DB dan tidak menampilkan uploader untuk file utama. "
-        "Mode 'Upload file' menerima satu file Excel (sheet 'General'). Mapping LIM1 optional (upload) — jika kosong gunakan built-in list."
+        "pilih menu"
+        "Upload/Database"
     )
 
     source = st.radio("Data Resource", ["Upload file", "From Data Base"], index=0)
@@ -503,8 +503,8 @@ def variation_page():
     """
     st.title("Parameter 3 — Poin Variasi Penugasan")
     st.markdown(
-        "Pilih sumber data. Mode 'From Data Base' hanya mengambil data dari DB dan tidak menampilkan uploader untuk file utama. "
-        "Mode 'Upload file' menerima satu file Excel (sheet 'General'). Mapping LIM1 optional (upload) — jika kosong gunakan built-in list."
+        "pilih menu"
+        "Upload/Database"
     )
 
     source = st.radio("Data Resource", ["Upload file", "From Data Base"], index=0)
@@ -512,21 +512,21 @@ def variation_page():
     uploaded = None
     mapfile = None
 
-    if source == "Upload file":
+    #if source == "Upload file":
         # single uploader for main file
-        uploaded = st.file_uploader("Upload file (sheet 'General') — hanya 1 file", type=["xlsx", "xls"], key="var_main")
-        mapfile = st.file_uploader("Optional: upload nameactlim1 (mapping LIM1)", type=["xlsx", "xls"], key="var_map")
-        st.info("Mode Upload: unggah satu file Excel yang memuat sheet 'General'.")
-    else:
+    #    uploaded = st.file_uploader("Upload file (sheet 'General') — hanya 1 file", type=["xlsx", "xls"], key="var_main")
+    #    mapfile = st.file_uploader("Optional: upload nameactlim1 (mapping LIM1)", type=["xlsx", "xls"], key="var_map")
+    #    st.info("Mode Upload: unggah satu file Excel yang memuat sheet 'General'.")
+    #else:
         # DB mode: no main uploader shown, only optional mapping uploader
-        st.info("Mode DB: data utama diambil dari database (view/table 'learningImpact1'). Upload hanya untuk mapping (opsional).")
-        mapfile = st.file_uploader("Optional: upload nameactlim1 (mapping LIM1)", type=["xlsx", "xls"], key="var_map_db")
+    #    st.info("Mode DB: data utama diambil dari database (view/table 'learningImpact1'). Upload hanya untuk mapping (opsional).")
+    #    mapfile = st.file_uploader("Optional: upload nameactlim1 (mapping LIM1)", type=["xlsx", "xls"], key="var_map_db")
 
     # local fallback for convenience
-    if source == "Upload file" and uploaded is None and os.path.exists("Agustus 2025.xlsx"):
-        uploaded = "Agustus 2025.xlsx"
-    if mapfile is None and os.path.exists("nameactlim1.xlsx"):
-        mapfile = "nameactlim1.xlsx"
+    #if source == "Upload file" and uploaded is None and os.path.exists("Agustus 2025.xlsx"):
+    #    uploaded = "Agustus 2025.xlsx"
+    #if mapfile is None and os.path.exists("nameactlim1.xlsx"):
+    #    mapfile = "nameactlim1.xlsx"
 
     # load main data
     try:
@@ -667,23 +667,3 @@ def variation_page():
     st.download_button("Download detail CSV", data=df_records.to_csv(index=False).encode("utf-8"), file_name="variation_detail.csv", mime="text/csv")
     st.download_button("Download summary CSV", data=summary.to_csv(index=False).encode("utf-8"), file_name="variation_summary.csv", mime="text/csv")
 
-    # OpenAI analysis (best-effort)
-    try:
-        top3 = summary.head(3).to_dict(orient="records")
-        prompt = ("Buat ringkasan singkat (3 kalimat) dan insight tentang top 3 expert berdasarkan total_point. "
-                  f"Top3: {top3}")
-        resp = genai.responses.create(model="models/text-bison-001", input=prompt)
-        analysis = ""
-        if hasattr(resp, "output") and getattr(resp, "output"):
-            parts = []
-            for out in resp.output:
-                if hasattr(out, "content"):
-                    for c in out.content:
-                        parts.append(getattr(c, "text", str(c)))
-            analysis = " ".join(parts).strip()
-        else:
-            analysis = str(resp)
-        st.subheader("Analisis (OpenAI)")
-        st.write(analysis)
-    except Exception:
-        st.info("Analisis OpenAI tidak tersedia (cek konfigurasi genai).")
