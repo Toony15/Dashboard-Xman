@@ -1,3 +1,4 @@
+# ...existing code...
 import os
 import re
 import unicodedata
@@ -130,20 +131,6 @@ ARI ADI YULIANTONO, M.ENG.|AMAZE: Coaching Clinic Consultative Selling for TREG 
 ARIF NURJAYANTO|B2B AM Development Program - BP IV, SAM, & Head Development Batch 1
 ARYA PRADANA NUGRAHANDITO|Business Communication for AMEX TReg 1
 AZIZAH KUSUMA WARDHANY|Case Based Learning B2B GRC Treg 1
-Achyar Basyari|Coaching Senior Leaders PT Telkom Akses Batch 2
-Adi Wahyu Nadiri|Mentoring Develop Phase for Amoeba NLP
-Alberto Daniel Hanani|Case Based Learning B2B GRC Treg 3
-Amir Fauzi|GPTP 20 - AM Prohire
-Anwar Sadat|Open Innovation For Innovators
-Arief Nugroho|GPTP 20
-Aries Darmawanto|Risk Management Method Batch 3
-Atik Rahmawati Tri Astuti|Mentoring Phase Deploy Amoeba Bank Recon
-Avania Athilayusa|Pitching Day Top 10 Inovasi AI Heroes for Digithink TSSC
-Ayu Tifani|Finance for Non Finance (FINON) Telkominfra
-BAGAS SATYAPARAHATMA|Asset Management for Practitioners TIF
-BAMBANG IRAWAN|Mentoring Phase Delivery Amoeba Octopus
-CANA PARANITA|B2B AM Development Program - BP IV, SAM, & Head Development Batch 2
-CAROLUS BORROMEUS WIDIYATMOKO|
 ... (list continues) ..."""
         rows = []
         for line in mapping_text.splitlines():
@@ -171,8 +158,8 @@ def variation_page():
     """
     st.title("Parameter 3 — Poin Variasi Penugasan")
     st.markdown(
-        "Silahkan memilih menu:"
-        "Upload/Database"
+        "Pilih sumber data. Mode 'From Data Base' hanya mengambil data dari DB dan tidak menampilkan uploader untuk file utama. "
+        "Mode 'Upload file' menerima satu file Excel (sheet 'General'). Mapping LIM1 optional (upload) — jika kosong gunakan built-in list."
     )
 
     source = st.radio("Data Resource", ["Upload file", "From Data Base"], index=0)
@@ -186,7 +173,7 @@ def variation_page():
         mapfile = st.file_uploader("Optional: upload nameactlim1 (mapping LIM1)", type=["xlsx", "xls"], key="var_map")
         st.info("Mode Upload: unggah satu file Excel yang memuat sheet 'General'.")
     else:
-        # DB mode: no main uploader shown
+        # DB mode: no main uploader shown, only optional mapping uploader
         st.info("Mode DB: data utama diambil dari database (view/table 'learningImpact1'). Upload hanya untuk mapping (opsional).")
         mapfile = st.file_uploader("Optional: upload nameactlim1 (mapping LIM1)", type=["xlsx", "xls"], key="var_map_db")
 
@@ -214,7 +201,7 @@ def variation_page():
         st.error("Mapping LIM1 tidak valid atau kosong. Unggah file mapping atau gunakan built-in list.")
         return
 
-    # detect columns in main table
+    # detect columns in main table (col_nik detected but NOT displayed)
     col_nik = _find_col(df_main, ["nik", "id"])
     col_name = _find_col(df_main, ["name", "expert", "nama"])
     col_course = _find_col(df_main, ["course_name", "course", "event", "course name"])
@@ -231,7 +218,8 @@ def variation_page():
     df_main["EVENT_NORM"] = df_main[col_course].apply(_norm_text)
     df_main["VARIASI_TEXT"] = df_main[col_variasi].astype(str).fillna("") if col_variasi else ""
     df_main["SUB_PENUGASAN"] = df_main[col_sub].astype(str).fillna("") if col_sub else ""
-    df_main["NIK"] = df_main[col_nik].astype(str).fillna("") if col_nik else ""
+    # intentionally do NOT store NIK column for outputs
+    # df_main["NIK"] = df_main[col_nik].astype(str).fillna("") if col_nik else ""
 
     # mapping sets
     lim1_names = set(mapping_df["NAME_UP"].tolist())
@@ -257,8 +245,7 @@ def variation_page():
         preview_cols.append(col_sub)
     if col_variasi:
         preview_cols.append(col_variasi)
-    if col_nik:
-        preview_cols.insert(0, col_nik)
+    # intentionally do NOT include NIK in preview
     st.dataframe(df_filtered[preview_cols].head(200))
 
     # aggregate by expert + event (count frequency) and compute bobot from 'variasi'
@@ -267,7 +254,6 @@ def variation_page():
     for (name_up, ev_norm), group in grouped:
         freq = int(len(group))
         sample = group.iloc[0]
-        nik_val = sample.get("NIK", "")
         name_val = sample.get(col_name, name_up)
         activity_display = sample.get(col_course, "")
         sub_pen = sample.get("SUB_PENUGASAN", "")
@@ -291,7 +277,7 @@ def variation_page():
 
         point = round(bobot * freq, 2)
         rows.append({
-            "NIK": nik_val,
+            # NIK removed as requested
             "NAME": name_val,
             "EVENT": activity_display,
             "EVENT_NORM": ev_norm,
@@ -307,16 +293,17 @@ def variation_page():
     df_records.insert(0, "no", range(1, len(df_records) + 1))
 
     st.subheader("Detail Variasi Penugasan (filtered)")
-    styler = (df_records[["no", "NIK", "NAME", "EVENT", "BOBOT LH", "FREKUENSI", "POIN BOBOT"]]
+    # remove orange header styling; keep minimal padding and number formatting
+    styler = (df_records[["no", "NAME", "EVENT", "BOBOT LH", "FREKUENSI", "POIN BOBOT"]]
               .style.set_table_styles([
-                  {"selector": "th", "props": [("background-color", "#d9643a"), ("color", "white"), ("text-align", "left")]},
+                  {"selector": "th", "props": [("padding", "6px"), ("text-align", "left")]},
                   {"selector": "td", "props": [("padding", "6px")]}
               ]).format({"BOBOT LH": "{:.2f}", "POIN BOBOT": "{:.2f}"}))
     st.markdown(styler.to_html(), unsafe_allow_html=True)
 
-    # summary per expert
+    # summary per expert (group by NAME only, NIK removed)
     summary = (df_records
-               .groupby(["NIK", "NAME"], as_index=False)
+               .groupby(["NAME"], as_index=False)
                .agg(total_point=("POIN BOBOT", "sum"), total_freq=("FREKUENSI", "sum"))
                .sort_values("total_point", ascending=False))
     st.subheader("Ringkasan per Expert (Total Point)")
@@ -331,7 +318,7 @@ def variation_page():
     st.subheader("Skor Normalisasi (Top 20)")
     st.dataframe(summary.head(20))
 
-    # downloads
+    # downloads (CSV won't include NIK)
     st.download_button("Download detail CSV", data=df_records.to_csv(index=False).encode("utf-8"), file_name="variation_detail.csv", mime="text/csv")
     st.download_button("Download summary CSV", data=summary.to_csv(index=False).encode("utf-8"), file_name="variation_summary.csv", mime="text/csv")
 
@@ -356,6 +343,7 @@ def variation_page():
     except Exception:
         st.info("Analisis OpenAI tidak tersedia (cek konfigurasi genai).")
 # filepath: e:\CorpU\EXMAN\expert-calculator\modules\variation.py
+# ...existing code...
 import os
 import re
 import unicodedata
@@ -488,20 +476,6 @@ ARI ADI YULIANTONO, M.ENG.|AMAZE: Coaching Clinic Consultative Selling for TREG 
 ARIF NURJAYANTO|B2B AM Development Program - BP IV, SAM, & Head Development Batch 1
 ARYA PRADANA NUGRAHANDITO|Business Communication for AMEX TReg 1
 AZIZAH KUSUMA WARDHANY|Case Based Learning B2B GRC Treg 1
-Achyar Basyari|Coaching Senior Leaders PT Telkom Akses Batch 2
-Adi Wahyu Nadiri|Mentoring Develop Phase for Amoeba NLP
-Alberto Daniel Hanani|Case Based Learning B2B GRC Treg 3
-Amir Fauzi|GPTP 20 - AM Prohire
-Anwar Sadat|Open Innovation For Innovators
-Arief Nugroho|GPTP 20
-Aries Darmawanto|Risk Management Method Batch 3
-Atik Rahmawati Tri Astuti|Mentoring Phase Deploy Amoeba Bank Recon
-Avania Athilayusa|Pitching Day Top 10 Inovasi AI Heroes for Digithink TSSC
-Ayu Tifani|Finance for Non Finance (FINON) Telkominfra
-BAGAS SATYAPARAHATMA|Asset Management for Practitioners TIF
-BAMBANG IRAWAN|Mentoring Phase Delivery Amoeba Octopus
-CANA PARANITA|B2B AM Development Program - BP IV, SAM, & Head Development Batch 2
-CAROLUS BORROMEUS WIDIYATMOKO|
 ... (list continues) ..."""
         rows = []
         for line in mapping_text.splitlines():
@@ -529,14 +503,30 @@ def variation_page():
     """
     st.title("Parameter 3 — Poin Variasi Penugasan")
     st.markdown(
-        "Silahkan memilih menu:"
-        "Upload/database"
+        "Pilih sumber data. Mode 'From Data Base' hanya mengambil data dari DB dan tidak menampilkan uploader untuk file utama. "
+        "Mode 'Upload file' menerima satu file Excel (sheet 'General'). Mapping LIM1 optional (upload) — jika kosong gunakan built-in list."
     )
 
     source = st.radio("Data Resource", ["Upload file", "From Data Base"], index=0)
 
     uploaded = None
     mapfile = None
+
+    if source == "Upload file":
+        # single uploader for main file
+        uploaded = st.file_uploader("Upload file (sheet 'General') — hanya 1 file", type=["xlsx", "xls"], key="var_main")
+        mapfile = st.file_uploader("Optional: upload nameactlim1 (mapping LIM1)", type=["xlsx", "xls"], key="var_map")
+        st.info("Mode Upload: unggah satu file Excel yang memuat sheet 'General'.")
+    else:
+        # DB mode: no main uploader shown, only optional mapping uploader
+        st.info("Mode DB: data utama diambil dari database (view/table 'learningImpact1'). Upload hanya untuk mapping (opsional).")
+        mapfile = st.file_uploader("Optional: upload nameactlim1 (mapping LIM1)", type=["xlsx", "xls"], key="var_map_db")
+
+    # local fallback for convenience
+    if source == "Upload file" and uploaded is None and os.path.exists("Agustus 2025.xlsx"):
+        uploaded = "Agustus 2025.xlsx"
+    if mapfile is None and os.path.exists("nameactlim1.xlsx"):
+        mapfile = "nameactlim1.xlsx"
 
     # load main data
     try:
@@ -556,7 +546,7 @@ def variation_page():
         st.error("Mapping LIM1 tidak valid atau kosong. Unggah file mapping atau gunakan built-in list.")
         return
 
-    # detect columns in main table
+    # detect columns in main table (col_nik detected but NOT displayed)
     col_nik = _find_col(df_main, ["nik", "id"])
     col_name = _find_col(df_main, ["name", "expert", "nama"])
     col_course = _find_col(df_main, ["course_name", "course", "event", "course name"])
@@ -573,7 +563,8 @@ def variation_page():
     df_main["EVENT_NORM"] = df_main[col_course].apply(_norm_text)
     df_main["VARIASI_TEXT"] = df_main[col_variasi].astype(str).fillna("") if col_variasi else ""
     df_main["SUB_PENUGASAN"] = df_main[col_sub].astype(str).fillna("") if col_sub else ""
-    df_main["NIK"] = df_main[col_nik].astype(str).fillna("") if col_nik else ""
+    # intentionally do NOT store NIK column for outputs
+    # df_main["NIK"] = df_main[col_nik].astype(str).fillna("") if col_nik else ""
 
     # mapping sets
     lim1_names = set(mapping_df["NAME_UP"].tolist())
@@ -599,8 +590,7 @@ def variation_page():
         preview_cols.append(col_sub)
     if col_variasi:
         preview_cols.append(col_variasi)
-    if col_nik:
-        preview_cols.insert(0, col_nik)
+    # intentionally do NOT include NIK in preview
     st.dataframe(df_filtered[preview_cols].head(200))
 
     # aggregate by expert + event (count frequency) and compute bobot from 'variasi'
@@ -609,7 +599,6 @@ def variation_page():
     for (name_up, ev_norm), group in grouped:
         freq = int(len(group))
         sample = group.iloc[0]
-        nik_val = sample.get("NIK", "")
         name_val = sample.get(col_name, name_up)
         activity_display = sample.get(col_course, "")
         sub_pen = sample.get("SUB_PENUGASAN", "")
@@ -633,7 +622,7 @@ def variation_page():
 
         point = round(bobot * freq, 2)
         rows.append({
-            "NIK": nik_val,
+            # NIK removed as requested
             "NAME": name_val,
             "EVENT": activity_display,
             "EVENT_NORM": ev_norm,
@@ -649,16 +638,17 @@ def variation_page():
     df_records.insert(0, "no", range(1, len(df_records) + 1))
 
     st.subheader("Detail Variasi Penugasan (filtered)")
-    styler = (df_records[["no", "NIK", "NAME", "EVENT", "BOBOT LH", "FREKUENSI", "POIN BOBOT"]]
+    # remove orange header styling; keep minimal padding and number formatting
+    styler = (df_records[["no", "NAME", "EVENT", "BOBOT LH", "FREKUENSI", "POIN BOBOT"]]
               .style.set_table_styles([
-                  {"selector": "th", "props": [("background-color", "#d9643a"), ("color", "white"), ("text-align", "left")]},
+                  {"selector": "th", "props": [("padding", "6px"), ("text-align", "left")]},
                   {"selector": "td", "props": [("padding", "6px")]}
               ]).format({"BOBOT LH": "{:.2f}", "POIN BOBOT": "{:.2f}"}))
     st.markdown(styler.to_html(), unsafe_allow_html=True)
 
-    # summary per expert
+    # summary per expert (group by NAME only, NIK removed)
     summary = (df_records
-               .groupby(["NIK", "NAME"], as_index=False)
+               .groupby(["NAME"], as_index=False)
                .agg(total_point=("POIN BOBOT", "sum"), total_freq=("FREKUENSI", "sum"))
                .sort_values("total_point", ascending=False))
     st.subheader("Ringkasan per Expert (Total Point)")
@@ -673,7 +663,7 @@ def variation_page():
     st.subheader("Skor Normalisasi (Top 20)")
     st.dataframe(summary.head(20))
 
-    # downloads
+    # downloads (CSV won't include NIK)
     st.download_button("Download detail CSV", data=df_records.to_csv(index=False).encode("utf-8"), file_name="variation_detail.csv", mime="text/csv")
     st.download_button("Download summary CSV", data=summary.to_csv(index=False).encode("utf-8"), file_name="variation_summary.csv", mime="text/csv")
 
