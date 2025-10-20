@@ -6,7 +6,7 @@ from google import genai
 from dataManager import load_all_data
 
 def performanceIndexPage():
-    upabase = get_db_connection()
+    supabase = get_db_connection()
     def read_and_merge(files):
         all_data = []
         for uploaded_file in files:
