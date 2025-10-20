@@ -106,6 +106,16 @@ def performanceIndexPage():
 
     # Hitung Performance Score (PI)
     lh_summary["Performance_Score"] = lh_summary["LH_Terkini"] / lh_summary["Rata2_LH_Sebelumnya"].replace(0, 1)
+    
+    #formula alternatif
+    epsilon = 1  # konstanta kecil untuk menghindari pembagian nol
+    alpha = 0.5  # bobot pertumbuhan
+    beta = 0.5   # bobot kontribusi absolut
+
+    lh_summary["New_Formula"] = (
+        alpha * (lh_summary["LH_Terkini"] / (lh_summary["Rata2_LH_Sebelumnya"] + epsilon)) +
+        beta * lh_summary["LH_Terkini"]
+    )
 
     # Normalisasi skor PI (Skor PI = (PI / PI Maksimum) * 100)
     max_pi = lh_summary["Performance_Score"].max()
