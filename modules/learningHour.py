@@ -87,6 +87,10 @@ def learning_hour_page():
         # Filter combined_df agar hanya berisi event yang ada di unique_events_df
         combined_df = combined_df[combined_df["Event"].isin(valid_events)].reset_index(drop=True)
 
+    quarter=["Q1", "Q2", "Q3", "Q4"]
+    quarter = st.pills("Pilih Quarter", quarter, selection_mode="single", default="Q1")
+    combined_df = combined_df[combined_df["Quarter"]==quarter]
+
     # Mapping bobot berdasarkan kolom Variasi
     bobot_map = {
         "Coaching (Coach)/Mentoring (Mentor)": 1.5,
