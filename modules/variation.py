@@ -529,8 +529,8 @@ def variation_page():
     """
     st.title("Parameter 3 — Poin Variasi Penugasan")
     st.markdown(
-        "Pilih sumber data. Mode 'From Data Base' hanya mengambil data dari DB dan tidak menampilkan uploader untuk file utama. "
-        "Mode 'Upload file' menerima satu file Excel (sheet 'General'). Mapping LIM1 optional (upload) — jika kosong gunakan built-in list."
+        "Silahkan memilih menu:"
+        "Upload/database"
     )
 
     source = st.radio("Data Resource", ["Upload file", "From Data Base"], index=0)
