@@ -1,13 +1,14 @@
-import streamlit as st
-import pandas as pd
 import os
 import re
 import unicodedata
-from dbConfig import get_db_connection
+
+import pandas as pd
+import streamlit as st
+
 from dataManager import load_all_data
 from google import genai
 
-# bobot berdasarkan kata kunci (case-insensitive)
+# bobot berdasarkan kata kunci (case-insensitive) - fallback jika tidak ada nilai eksplisit
 BOBOT_MAP = {
     "coach": 1.5,
     "mentor": 1.4,
@@ -19,20 +20,32 @@ BOBOT_MAP = {
     "article": 1.0
 }
 
-def _find_col(df, candidates):
-    cols = {c.lower(): c for c in df.columns}
+
+def _find_col(df: pd.DataFrame, candidates):
+    """
+    Find first column name in df that matches any candidate (exact or substring, case-insensitive).
+    Returns actual column name or None.
+    """
+    cols = {str(c).lower().strip(): c for c in df.columns}
     for cand in candidates:
-        if cand.lower() in cols:
-            return cols[cand.lower()]
+        if not cand:
+            continue
+        k = cand.lower().strip()
+        if k in cols:
+            return cols[k]
+    # fallback: substring match
     for col in df.columns:
-        low = col.lower()
+        low = str(col).lower()
         for cand in candidates:
-            if cand.lower() in low:
+            if not cand:
+                continue
+            if cand.lower().strip() in low:
                 return col
     return None
 
+
 def _norm_text(s):
-    if pd.isna(s):
+    if pd.isna(s) or s is None:
         return ""
     s = str(s)
     s = unicodedata.normalize("NFKD", s)
@@ -40,172 +53,271 @@ def _norm_text(s):
     s = re.sub(r"\s+", " ", s)
     return s.strip().lower()
 
+
 def _assign_bobot_from_text(text):
-    s = _norm_text(text)
+    """
+    If text is numeric (e.g. '1.4' or '1,4') return float.
+    Else match keywords in BOBOT_MAP.
+    Default 1.0.
+    """
+    if text is None:
+        return 1.0
+    t = str(text).strip()
+    if t == "":
+        return 1.0
+    # numeric first
+    try:
+        return float(t.replace(",", "."))
+    except Exception:
+        pass
+    s = _norm_text(t)
     for k, v in BOBOT_MAP.items():
         if k in s:
             return v
     return 1.0
 
+
 def _load_nameact_mapping(mfile):
-    try:
-        if isinstance(mfile, (str, os.PathLike)) and os.path.exists(mfile):
-            mp = pd.read_excel(mfile, sheet_name=0, dtype=str)
-        else:
-            mp = pd.read_excel(mfile, sheet_name=0, dtype=str)
-    except Exception:
-        return None
-    mp = mp.rename(columns={c: c.strip() for c in mp.columns})
-    name_col = _find_col(mp, ["name"])
-    act_col = _find_col(mp, ["activity", "course_name", "course"])
-    if not name_col or not act_col:
-        return None
-    pairs = mp[[name_col, act_col]].dropna(how="all").copy()
-    pairs.columns = ["NAME", "ACTIVITY"]
+    """
+    Load mapping list (Name | Activity).
+    If mfile provided, read first sheet and detect name/activity columns.
+    Otherwise use built-in list provided by user.
+    Returns DataFrame with columns: NAME_UP, ACTIVITY_NORM, ACTIVITY
+    """
+    if mfile is not None:
+        try:
+            if isinstance(mfile, (str, os.PathLike)) and os.path.exists(mfile):
+                mp = pd.read_excel(mfile, sheet_name=0, dtype=str)
+            else:
+                mp = pd.read_excel(mfile, sheet_name=0, dtype=str)
+            mp = mp.rename(columns={c: c.strip() for c in mp.columns})
+            name_col = _find_col(mp, ["name", "nama", "expert"])
+            act_col = _find_col(mp, ["activity", "course_name", "course", "event"])
+            if name_col is None and act_col is None:
+                return None
+            cols = []
+            if name_col is not None:
+                cols.append(name_col)
+            if act_col is not None:
+                cols.append(act_col)
+            pairs = mp[cols].copy()
+            rename_map = {}
+            if name_col is not None:
+                rename_map[name_col] = "NAME"
+            if act_col is not None:
+                rename_map[act_col] = "ACTIVITY"
+            pairs = pairs.rename(columns=rename_map)
+            if "NAME" not in pairs.columns:
+                pairs["NAME"] = ""
+            if "ACTIVITY" not in pairs.columns:
+                pairs["ACTIVITY"] = ""
+        except Exception:
+            return None
+    else:
+        # built-in mapping (user-provided list). Keep trimmed.
+        mapping_text = """ABDUL HAMID ARROZI, MM|B2B AM Development Batch 2 (Telkomsel)
+AMIR FAUZI|AMAZE: Coaching Clinic Consultative Selling for AMEX Batch 1
+RAMADHAN, SST., M.T.|AMAZE: Coaching Clinic Consultative Selling for AMEX Batch 2
+ABDUL HAMID ARROZI, MM|Case Based Learning B2B Risk Management
+AFDOL MUFTIASA|Leadership Development Program for Managers PT Telkom Akses
+AGUS SOFIAN|Brevetisasi Logic Level 1 Batch 2
+AKAS TRIONO HADI|Solution Enablement Produk Digital
+AMIR FAUZI|Solution Enablement Produk Digital Batch 2
+ANDI HAKIM KUSUMA|Internal Auditor Induction Program - Project Management
+ANGGI AGUSTIAN|AMAZE: Coaching Clinic Consultative Selling for TREG 3 Batch 1
+ARDISTYA WIRAWAN|AMAZE: Coaching Clinic Consultative Selling for TREG 3 Batch 2
+ARI ADI YULIANTONO, M.ENG.|AMAZE: Coaching Clinic Consultative Selling for TREG 4
+ARIF NURJAYANTO|B2B AM Development Program - BP IV, SAM, & Head Development Batch 1
+ARYA PRADANA NUGRAHANDITO|Business Communication for AMEX TReg 1
+AZIZAH KUSUMA WARDHANY|Case Based Learning B2B GRC Treg 1
+Achyar Basyari|Coaching Senior Leaders PT Telkom Akses Batch 2
+Adi Wahyu Nadiri|Mentoring Develop Phase for Amoeba NLP
+Alberto Daniel Hanani|Case Based Learning B2B GRC Treg 3
+Amir Fauzi|GPTP 20 - AM Prohire
+Anwar Sadat|Open Innovation For Innovators
+Arief Nugroho|GPTP 20
+Aries Darmawanto|Risk Management Method Batch 3
+Atik Rahmawati Tri Astuti|Mentoring Phase Deploy Amoeba Bank Recon
+Avania Athilayusa|Pitching Day Top 10 Inovasi AI Heroes for Digithink TSSC
+Ayu Tifani|Finance for Non Finance (FINON) Telkominfra
+BAGAS SATYAPARAHATMA|Asset Management for Practitioners TIF
+BAMBANG IRAWAN|Mentoring Phase Delivery Amoeba Octopus
+CANA PARANITA|B2B AM Development Program - BP IV, SAM, & Head Development Batch 2
+CAROLUS BORROMEUS WIDIYATMOKO|
+... (list continues) ..."""
+        rows = []
+        for line in mapping_text.splitlines():
+            if not line.strip():
+                continue
+            if "|" in line:
+                n, a = line.split("|", 1)
+            else:
+                n, a = line.strip(), ""
+            rows.append({"NAME": n.strip(), "ACTIVITY": a.strip()})
+        pairs = pd.DataFrame(rows)
+
     pairs["NAME_UP"] = pairs["NAME"].astype(str).str.strip().str.upper()
     pairs["ACTIVITY_NORM"] = pairs["ACTIVITY"].apply(_norm_text)
     pairs = pairs.drop_duplicates(subset=["NAME_UP", "ACTIVITY_NORM"])
     return pairs[["NAME_UP", "ACTIVITY_NORM", "ACTIVITY"]]
 
+
 def variation_page():
-    st.title("Parameter 3 — Poin Variasi Penugasan (Variation)")
+    """
+    Streamlit page: two modes:
+      - Upload file: user uploads single Excel (sheet 'General')
+      - From Data Base: app fetches data from DB (learningImpact1)
+    In both modes mapping file is optional (used to filter by name or event).
+    """
+    st.title("Parameter 3 — Poin Variasi Penugasan")
+    st.markdown(
+        "Silahkan memilih menu:"
+        "Upload/Database"
+    )
 
-    st.markdown("Unggah file `Agustus 2025.xlsx` (sheet 'General') dan file mapping `nameactlim1` (kolom Name, Activity). Pilih sumber data seperti pada modul Learning Hour.")
+    source = st.radio("Data Resource", ["Upload file", "From Data Base"], index=0)
 
-    source = st.pills("Data Resource", ["Upload file", "From Data Base"], selection_mode="single", default="Upload file")
-    col1, col2 = st.columns([1,1])
-    with col1:
-        uploaded = st.file_uploader("Upload data Excel (Agustus 2025.xlsx)", type=["xlsx","xls"], key="var_main")
-    with col2:
-        mapfile = st.file_uploader("Upload nameactlim1 (mapping LIM1)", type=["xlsx","xls"], key="var_map")
+    uploaded = None
+    mapfile = None
 
-    # fallback ke file lokal jika user tidak upload
-    if uploaded is None and os.path.exists("Agustus 2025.xlsx"):
+    if source == "Upload file":
+        # single uploader for main file
+        uploaded = st.file_uploader("Upload file (sheet 'General') — hanya 1 file", type=["xlsx", "xls"], key="var_main")
+        mapfile = st.file_uploader("Optional: upload nameactlim1 (mapping LIM1)", type=["xlsx", "xls"], key="var_map")
+        st.info("Mode Upload: unggah satu file Excel yang memuat sheet 'General'.")
+    else:
+        # DB mode: no main uploader shown
+        st.info("Mode DB: data utama diambil dari database (view/table 'learningImpact1'). Upload hanya untuk mapping (opsional).")
+        mapfile = st.file_uploader("Optional: upload nameactlim1 (mapping LIM1)", type=["xlsx", "xls"], key="var_map_db")
+
+    # local fallback for convenience
+    if source == "Upload file" and uploaded is None and os.path.exists("Agustus 2025.xlsx"):
         uploaded = "Agustus 2025.xlsx"
     if mapfile is None and os.path.exists("nameactlim1.xlsx"):
         mapfile = "nameactlim1.xlsx"
 
-    df_main = pd.DataFrame()
-    if source == "From Data Base":
-        viewTable = "General"  # sesuaikan jika view berbeda
-        try:
-            df_main = load_all_data(viewTable)
-        except Exception as e:
-            st.error(f"Gagal ambil data dari DB: {e}")
-            return
-    else:
-        if uploaded is None:
-            st.info("Silakan unggah file data utama (Agustus 2025.xlsx) atau pilih From Data Base.")
-            return
-        try:
-            if isinstance(uploaded, (str, os.PathLike)):
-                df_main = pd.read_excel(uploaded, sheet_name="General", dtype=str)
-            else:
-                df_main = pd.read_excel(uploaded, sheet_name="General", dtype=str)
-        except Exception as e:
-            st.error(f"Gagal membaca sheet 'General': {e}")
-            return
-
-    if mapfile is None:
-        st.info("Silakan unggah file nameactlim1 (mapping LIM1) atau taruh nameactlim1.xlsx di folder project.")
+    # load main data
+    try:
+        if source == "From Data Base":
+            df_main = load_all_data("learningImpact1")
+        else:
+            if uploaded is None:
+                st.info("Silakan unggah file atau pilih 'From Data Base'.")
+                return
+            df_main = pd.read_excel(uploaded, sheet_name="General", dtype=str)
+    except Exception as e:
+        st.error(f"Gagal ambil/membaca data utama: {e}")
         return
 
     mapping_df = _load_nameact_mapping(mapfile)
     if mapping_df is None or mapping_df.empty:
-        st.error("Gagal membaca mapping nameactlim1. Pastikan ada kolom 'Name' dan 'Activity'.")
+        st.error("Mapping LIM1 tidak valid atau kosong. Unggah file mapping atau gunakan built-in list.")
         return
 
-    # deteksi kolom penting di sheet General
+    # detect columns in main table
     col_nik = _find_col(df_main, ["nik", "id"])
-    col_name = _find_col(df_main, ["name", "nama"])
-    col_sub = _find_col(df_main, ["sub_penugasan", "sub penugasan"])
-    col_activities = _find_col(df_main, ["activities", "activity"])
-    col_course = _find_col(df_main, ["course_name", "course", "course name"])
-    col_bobot = _find_col(df_main, ["bobot lh", "bobot_lh", "bobot"])
+    col_name = _find_col(df_main, ["name", "expert", "nama"])
+    col_course = _find_col(df_main, ["course_name", "course", "event", "course name"])
+    col_variasi = _find_col(df_main, ["variasi", "variation"])
+    col_sub = _find_col(df_main, ["sub_penugasan", "penugasan"])
 
-    if not col_name:
-        st.error("Kolom 'name' tidak ditemukan di sheet 'General'.")
+    if not col_name or not col_course:
+        st.error("Kolom 'name' atau 'course_name/event' tidak ditemukan di data utama.")
         return
 
+    # normalize
     df_main = df_main.rename(columns={c: c.strip() for c in df_main.columns})
     df_main["NAME_UP"] = df_main[col_name].astype(str).str.strip().str.upper()
-    df_main["COURSE_NORM"] = df_main[col_course].apply(_norm_text) if col_course else ""
-    df_main["ACTIVITIES_NORM"] = df_main[col_activities].apply(_norm_text) if col_activities else ""
+    df_main["EVENT_NORM"] = df_main[col_course].apply(_norm_text)
+    df_main["VARIASI_TEXT"] = df_main[col_variasi].astype(str).fillna("") if col_variasi else ""
     df_main["SUB_PENUGASAN"] = df_main[col_sub].astype(str).fillna("") if col_sub else ""
     df_main["NIK"] = df_main[col_nik].astype(str).fillna("") if col_nik else ""
 
-    # filter hanya nama yang ada di mapping
+    # mapping sets
     lim1_names = set(mapping_df["NAME_UP"].tolist())
-    df_lim1 = df_main[df_main["NAME_UP"].isin(lim1_names)].copy()
-    if df_lim1.empty:
-        st.warning("Tidak ada baris di sheet 'General' yang cocok dengan mapping nameactlim1.")
+    mapping_activities = [a for a in mapping_df["ACTIVITY_NORM"].tolist() if a]
+
+    def event_matches_any(ev_norm):
+        if not isinstance(ev_norm, str) or ev_norm == "":
+            return False
+        for act in mapping_activities:
+            if act and act in ev_norm:
+                return True
+        return False
+
+    # include rows where name in list OR event matches any mapping activity
+    df_filtered = df_main[df_main["NAME_UP"].isin(lim1_names) | df_main["EVENT_NORM"].apply(event_matches_any)].copy()
+    if df_filtered.empty:
+        st.warning("Tidak ada baris yang cocok berdasarkan nama OR event dari daftar mapping.")
         return
 
-    st.subheader("Preview data (baris yang cocok dengan LIM1)")
-    preview_cols = []
-    if col_nik: preview_cols.append(col_nik)
-    preview_cols += [col_name]
-    if col_sub: preview_cols.append(col_sub)
-    if col_activities: preview_cols.append(col_activities)
-    if col_course: preview_cols.append(col_course)
-    st.dataframe(df_lim1[preview_cols].head(200))
+    st.subheader("Preview (filtered by mapping names OR mapping events)")
+    preview_cols = [col_name, col_course]
+    if col_sub:
+        preview_cols.append(col_sub)
+    if col_variasi:
+        preview_cols.append(col_variasi)
+    if col_nik:
+        preview_cols.insert(0, col_nik)
+    st.dataframe(df_filtered[preview_cols].head(200))
 
-    # hitung frekuensi berdasarkan pasangan name+course_name pada mapping
-    records = []
-    for _, pair in mapping_df.iterrows():
-        name_up = pair["NAME_UP"]
-        act_norm = pair["ACTIVITY_NORM"]
-        act_display = pair.get("ACTIVITY", "")
-        df_person = df_lim1[df_lim1["NAME_UP"] == name_up]
-        if df_person.empty:
-            continue
-        mask = df_person["COURSE_NORM"].str.contains(act_norm, na=False) | df_person["ACTIVITIES_NORM"].str.contains(act_norm, na=False)
-        freq = int(mask.sum())
-        if freq == 0:
-            continue
-        sample = df_person[mask].iloc[0]
+    # aggregate by expert + event (count frequency) and compute bobot from 'variasi'
+    rows = []
+    grouped = df_filtered.groupby(["NAME_UP", "EVENT_NORM"], dropna=False)
+    for (name_up, ev_norm), group in grouped:
+        freq = int(len(group))
+        sample = group.iloc[0]
         nik_val = sample.get("NIK", "")
-        name_val = sample.get(col_name, sample.get("NAME_UP", ""))
+        name_val = sample.get(col_name, name_up)
+        activity_display = sample.get(col_course, "")
         sub_pen = sample.get("SUB_PENUGASAN", "")
-        explicit_bobot = None
-        if col_bobot:
-            try:
-                explicit_bobot = float(str(sample.get(col_bobot)).replace(",", "."))
-            except Exception:
-                explicit_bobot = None
-        bobot_lh = explicit_bobot if explicit_bobot and explicit_bobot > 0 else _assign_bobot_from_text(sub_pen) or _assign_bobot_from_text(act_display)
-        point = round(bobot_lh * freq, 2)
-        records.append({
+
+        # prefer variasi column values (first non-empty)
+        variasi_vals = [str(x).strip() for x in group["VARIASI_TEXT"].tolist() if str(x).strip()]
+        bobot = None
+        if variasi_vals:
+            # try numeric first
+            for v in variasi_vals:
+                try:
+                    bobot = float(v.replace(",", "."))
+                    break
+                except Exception:
+                    pass
+            if bobot is None:
+                bobot = _assign_bobot_from_text(variasi_vals[0])
+        else:
+            # fallback to sub_pen or activity_display inference
+            bobot = _assign_bobot_from_text(sub_pen or activity_display or "")
+
+        point = round(bobot * freq, 2)
+        rows.append({
             "NIK": nik_val,
             "NAME": name_val,
-            "SUB_PENUGASAN": sub_pen,
-            "ACTIVITIES": act_display,
-            "course_name": act_display,
-            "BOBOT LH": bobot_lh,
+            "EVENT": activity_display,
+            "EVENT_NORM": ev_norm,
+            "BOBOT LH": bobot,
             "FREKUENSI": freq,
             "POIN BOBOT": point
         })
 
-    if not records:
-        st.info("Tidak ditemukan pasangan name+course_name pada data utama sesuai mapping.")
+    df_records = pd.DataFrame(rows)
+    if df_records.empty:
+        st.info("Tidak ditemukan record setelah agregasi.")
         return
-
-    df_records = pd.DataFrame.from_records(records)
     df_records.insert(0, "no", range(1, len(df_records) + 1))
 
-    # tampilkan tabel dengan styling header oranye (menggunakan to_html)
-    styler = (df_records[["no","NIK","NAME","SUB_PENUGASAN","ACTIVITIES","course_name","BOBOT LH","FREKUENSI","POIN BOBOT"]]
-              .style.set_table_styles([{"selector":"th","props":[("background-color","#d9643a"),("color","white")]},
-                                       {"selector":"td","props":[("padding","6px")]}])
-              .format({"BOBOT LH": "{:.2f}", "POIN BOBOT": "{:.2f}"}))
-    st.subheader("Detail per record")
+    st.subheader("Detail Variasi Penugasan (filtered)")
+    styler = (df_records[["no", "NIK", "NAME", "EVENT", "BOBOT LH", "FREKUENSI", "POIN BOBOT"]]
+              .style.set_table_styles([
+                  {"selector": "th", "props": [("background-color", "#d9643a"), ("color", "white"), ("text-align", "left")]},
+                  {"selector": "td", "props": [("padding", "6px")]}
+              ]).format({"BOBOT LH": "{:.2f}", "POIN BOBOT": "{:.2f}"}))
     st.markdown(styler.to_html(), unsafe_allow_html=True)
 
-    # ringkasan per expert
+    # summary per expert
     summary = (df_records
-               .groupby(["NIK","NAME"], as_index=False)
-               .agg(total_point=("POIN BOBOT","sum"),
-                    total_freq=("FREKUENSI","sum"))
+               .groupby(["NIK", "NAME"], as_index=False)
+               .agg(total_point=("POIN BOBOT", "sum"), total_freq=("FREKUENSI", "sum"))
                .sort_values("total_point", ascending=False))
     st.subheader("Ringkasan per Expert (Total Point)")
     st.dataframe(summary)
@@ -214,40 +326,47 @@ def variation_page():
     min_total_point = st.number_input("Minimal Total Point Expert (batas bawah)", value=1.0, step=0.1)
 
     summary["total_point_clamped"] = summary["total_point"].apply(lambda v: max(v, float(min_total_point)))
-    summary["score_percent"] = (summary["total_point_clamped"] / float(max_point)) * 100
-    summary["score_percent"] = summary["score_percent"].clip(0,100).round(2)
+    summary["score_percent"] = (summary["total_point_clamped"] / float(max_point) * 100).clip(0, 100).round(2)
 
     st.subheader("Skor Normalisasi (Top 20)")
     st.dataframe(summary.head(20))
 
-    # download
-    csv_bytes = df_records.to_csv(index=False).encode("utf-8")
-    st.download_button("Download detail CSV", data=csv_bytes, file_name="variation_detail.csv", mime="text/csv")
+    # downloads
+    st.download_button("Download detail CSV", data=df_records.to_csv(index=False).encode("utf-8"), file_name="variation_detail.csv", mime="text/csv")
     st.download_button("Download summary CSV", data=summary.to_csv(index=False).encode("utf-8"), file_name="variation_summary.csv", mime="text/csv")
 
-    # Analisis singkat via OpenAI (genai) - optional, non-blocking
+    # OpenAI analysis (best-effort)
     try:
         top3 = summary.head(3).to_dict(orient="records")
-        prompt = "Buat ringkasan singkat (3 kalimat) tentang top 3 expert berdasarkan total_point: " + str(top3)
+        prompt = ("Buat ringkasan singkat (3 kalimat) dan insight tentang top 3 expert berdasarkan total_point. "
+                  f"Top3: {top3}")
         resp = genai.responses.create(model="models/text-bison-001", input=prompt)
-        analysis = resp.output[0].content[0].text if hasattr(resp, "output") else str(resp)
+        analysis = ""
+        if hasattr(resp, "output") and getattr(resp, "output"):
+            parts = []
+            for out in resp.output:
+                if hasattr(out, "content"):
+                    for c in out.content:
+                        parts.append(getattr(c, "text", str(c)))
+            analysis = " ".join(parts).strip()
+        else:
+            analysis = str(resp)
         st.subheader("Analisis (OpenAI)")
         st.write(analysis)
     except Exception:
-        # jangan ganggu flow jika gagal panggil genai
         st.info("Analisis OpenAI tidak tersedia (cek konfigurasi genai).")
- 
 # filepath: e:\CorpU\EXMAN\expert-calculator\modules\variation.py
-import streamlit as st
-import pandas as pd
 import os
 import re
 import unicodedata
-from dbConfig import get_db_connection
+
+import pandas as pd
+import streamlit as st
+
 from dataManager import load_all_data
 from google import genai
 
-# bobot berdasarkan kata kunci (case-insensitive)
+# bobot berdasarkan kata kunci (case-insensitive) - fallback jika tidak ada nilai eksplisit
 BOBOT_MAP = {
     "coach": 1.5,
     "mentor": 1.4,
@@ -259,20 +378,32 @@ BOBOT_MAP = {
     "article": 1.0
 }
 
-def _find_col(df, candidates):
-    cols = {c.lower(): c for c in df.columns}
+
+def _find_col(df: pd.DataFrame, candidates):
+    """
+    Find first column name in df that matches any candidate (exact or substring, case-insensitive).
+    Returns actual column name or None.
+    """
+    cols = {str(c).lower().strip(): c for c in df.columns}
     for cand in candidates:
-        if cand.lower() in cols:
-            return cols[cand.lower()]
+        if not cand:
+            continue
+        k = cand.lower().strip()
+        if k in cols:
+            return cols[k]
+    # fallback: substring match
     for col in df.columns:
-        low = col.lower()
+        low = str(col).lower()
         for cand in candidates:
-            if cand.lower() in low:
+            if not cand:
+                continue
+            if cand.lower().strip() in low:
                 return col
     return None
 
+
 def _norm_text(s):
-    if pd.isna(s):
+    if pd.isna(s) or s is None:
         return ""
     s = str(s)
     s = unicodedata.normalize("NFKD", s)
@@ -280,172 +411,255 @@ def _norm_text(s):
     s = re.sub(r"\s+", " ", s)
     return s.strip().lower()
 
+
 def _assign_bobot_from_text(text):
-    s = _norm_text(text)
+    """
+    If text is numeric (e.g. '1.4' or '1,4') return float.
+    Else match keywords in BOBOT_MAP.
+    Default 1.0.
+    """
+    if text is None:
+        return 1.0
+    t = str(text).strip()
+    if t == "":
+        return 1.0
+    # numeric first
+    try:
+        return float(t.replace(",", "."))
+    except Exception:
+        pass
+    s = _norm_text(t)
     for k, v in BOBOT_MAP.items():
         if k in s:
             return v
     return 1.0
 
+
 def _load_nameact_mapping(mfile):
-    try:
-        if isinstance(mfile, (str, os.PathLike)) and os.path.exists(mfile):
-            mp = pd.read_excel(mfile, sheet_name=0, dtype=str)
-        else:
-            mp = pd.read_excel(mfile, sheet_name=0, dtype=str)
-    except Exception:
-        return None
-    mp = mp.rename(columns={c: c.strip() for c in mp.columns})
-    name_col = _find_col(mp, ["name"])
-    act_col = _find_col(mp, ["activity", "course_name", "course"])
-    if not name_col or not act_col:
-        return None
-    pairs = mp[[name_col, act_col]].dropna(how="all").copy()
-    pairs.columns = ["NAME", "ACTIVITY"]
+    """
+    Load mapping list (Name | Activity).
+    If mfile provided, read first sheet and detect name/activity columns.
+    Otherwise use built-in list provided by user.
+    Returns DataFrame with columns: NAME_UP, ACTIVITY_NORM, ACTIVITY
+    """
+    if mfile is not None:
+        try:
+            if isinstance(mfile, (str, os.PathLike)) and os.path.exists(mfile):
+                mp = pd.read_excel(mfile, sheet_name=0, dtype=str)
+            else:
+                mp = pd.read_excel(mfile, sheet_name=0, dtype=str)
+            mp = mp.rename(columns={c: c.strip() for c in mp.columns})
+            name_col = _find_col(mp, ["name", "nama", "expert"])
+            act_col = _find_col(mp, ["activity", "course_name", "course", "event"])
+            if name_col is None and act_col is None:
+                return None
+            cols = []
+            if name_col is not None:
+                cols.append(name_col)
+            if act_col is not None:
+                cols.append(act_col)
+            pairs = mp[cols].copy()
+            rename_map = {}
+            if name_col is not None:
+                rename_map[name_col] = "NAME"
+            if act_col is not None:
+                rename_map[act_col] = "ACTIVITY"
+            pairs = pairs.rename(columns=rename_map)
+            if "NAME" not in pairs.columns:
+                pairs["NAME"] = ""
+            if "ACTIVITY" not in pairs.columns:
+                pairs["ACTIVITY"] = ""
+        except Exception:
+            return None
+    else:
+        # built-in mapping (user-provided list). Keep trimmed.
+        mapping_text = """ABDUL HAMID ARROZI, MM|B2B AM Development Batch 2 (Telkomsel)
+AMIR FAUZI|AMAZE: Coaching Clinic Consultative Selling for AMEX Batch 1
+RAMADHAN, SST., M.T.|AMAZE: Coaching Clinic Consultative Selling for AMEX Batch 2
+ABDUL HAMID ARROZI, MM|Case Based Learning B2B Risk Management
+AFDOL MUFTIASA|Leadership Development Program for Managers PT Telkom Akses
+AGUS SOFIAN|Brevetisasi Logic Level 1 Batch 2
+AKAS TRIONO HADI|Solution Enablement Produk Digital
+AMIR FAUZI|Solution Enablement Produk Digital Batch 2
+ANDI HAKIM KUSUMA|Internal Auditor Induction Program - Project Management
+ANGGI AGUSTIAN|AMAZE: Coaching Clinic Consultative Selling for TREG 3 Batch 1
+ARDISTYA WIRAWAN|AMAZE: Coaching Clinic Consultative Selling for TREG 3 Batch 2
+ARI ADI YULIANTONO, M.ENG.|AMAZE: Coaching Clinic Consultative Selling for TREG 4
+ARIF NURJAYANTO|B2B AM Development Program - BP IV, SAM, & Head Development Batch 1
+ARYA PRADANA NUGRAHANDITO|Business Communication for AMEX TReg 1
+AZIZAH KUSUMA WARDHANY|Case Based Learning B2B GRC Treg 1
+Achyar Basyari|Coaching Senior Leaders PT Telkom Akses Batch 2
+Adi Wahyu Nadiri|Mentoring Develop Phase for Amoeba NLP
+Alberto Daniel Hanani|Case Based Learning B2B GRC Treg 3
+Amir Fauzi|GPTP 20 - AM Prohire
+Anwar Sadat|Open Innovation For Innovators
+Arief Nugroho|GPTP 20
+Aries Darmawanto|Risk Management Method Batch 3
+Atik Rahmawati Tri Astuti|Mentoring Phase Deploy Amoeba Bank Recon
+Avania Athilayusa|Pitching Day Top 10 Inovasi AI Heroes for Digithink TSSC
+Ayu Tifani|Finance for Non Finance (FINON) Telkominfra
+BAGAS SATYAPARAHATMA|Asset Management for Practitioners TIF
+BAMBANG IRAWAN|Mentoring Phase Delivery Amoeba Octopus
+CANA PARANITA|B2B AM Development Program - BP IV, SAM, & Head Development Batch 2
+CAROLUS BORROMEUS WIDIYATMOKO|
+... (list continues) ..."""
+        rows = []
+        for line in mapping_text.splitlines():
+            if not line.strip():
+                continue
+            if "|" in line:
+                n, a = line.split("|", 1)
+            else:
+                n, a = line.strip(), ""
+            rows.append({"NAME": n.strip(), "ACTIVITY": a.strip()})
+        pairs = pd.DataFrame(rows)
+
     pairs["NAME_UP"] = pairs["NAME"].astype(str).str.strip().str.upper()
     pairs["ACTIVITY_NORM"] = pairs["ACTIVITY"].apply(_norm_text)
     pairs = pairs.drop_duplicates(subset=["NAME_UP", "ACTIVITY_NORM"])
     return pairs[["NAME_UP", "ACTIVITY_NORM", "ACTIVITY"]]
 
+
 def variation_page():
-    st.title("Parameter 3 — Poin Variasi Penugasan (Variation)")
+    """
+    Streamlit page: two modes:
+      - Upload file: user uploads single Excel (sheet 'General')
+      - From Data Base: app fetches data from DB (learningImpact1)
+    In both modes mapping file is optional (used to filter by name or event).
+    """
+    st.title("Parameter 3 — Poin Variasi Penugasan")
+    st.markdown(
+        "Silahkan memilih menu:"
+        "Upload/database"
+    )
 
-    st.markdown("Unggah file `Agustus 2025.xlsx` (sheet 'General') dan file mapping `nameactlim1` (kolom Name, Activity). Pilih sumber data seperti pada modul Learning Hour.")
+    source = st.radio("Data Resource", ["Upload file", "From Data Base"], index=0)
 
-    source = st.pills("Data Resource", ["Upload file", "From Data Base"], selection_mode="single", default="Upload file")
-    col1, col2 = st.columns([1,1])
-    with col1:
-        uploaded = st.file_uploader("Upload data Excel (Agustus 2025.xlsx)", type=["xlsx","xls"], key="var_main")
-    with col2:
-        mapfile = st.file_uploader("Upload nameactlim1 (mapping LIM1)", type=["xlsx","xls"], key="var_map")
+    uploaded = None
+    mapfile = None
 
-    # fallback ke file lokal jika user tidak upload
-    if uploaded is None and os.path.exists("Agustus 2025.xlsx"):
-        uploaded = "Agustus 2025.xlsx"
-    if mapfile is None and os.path.exists("nameactlim1.xlsx"):
-        mapfile = "nameactlim1.xlsx"
-
-    df_main = pd.DataFrame()
-    if source == "From Data Base":
-        viewTable = "General"  # sesuaikan jika view berbeda
-        try:
-            df_main = load_all_data(viewTable)
-        except Exception as e:
-            st.error(f"Gagal ambil data dari DB: {e}")
-            return
-    else:
-        if uploaded is None:
-            st.info("Silakan unggah file data utama (Agustus 2025.xlsx) atau pilih From Data Base.")
-            return
-        try:
-            if isinstance(uploaded, (str, os.PathLike)):
-                df_main = pd.read_excel(uploaded, sheet_name="General", dtype=str)
-            else:
-                df_main = pd.read_excel(uploaded, sheet_name="General", dtype=str)
-        except Exception as e:
-            st.error(f"Gagal membaca sheet 'General': {e}")
-            return
-
-    if mapfile is None:
-        st.info("Silakan unggah file nameactlim1 (mapping LIM1) atau taruh nameactlim1.xlsx di folder project.")
+    # load main data
+    try:
+        if source == "From Data Base":
+            df_main = load_all_data("learningImpact1")
+        else:
+            if uploaded is None:
+                st.info("Silakan unggah file atau pilih 'From Data Base'.")
+                return
+            df_main = pd.read_excel(uploaded, sheet_name="General", dtype=str)
+    except Exception as e:
+        st.error(f"Gagal ambil/membaca data utama: {e}")
         return
 
     mapping_df = _load_nameact_mapping(mapfile)
     if mapping_df is None or mapping_df.empty:
-        st.error("Gagal membaca mapping nameactlim1. Pastikan ada kolom 'Name' dan 'Activity'.")
+        st.error("Mapping LIM1 tidak valid atau kosong. Unggah file mapping atau gunakan built-in list.")
         return
 
-    # deteksi kolom penting di sheet General
+    # detect columns in main table
     col_nik = _find_col(df_main, ["nik", "id"])
-    col_name = _find_col(df_main, ["name", "nama"])
-    col_sub = _find_col(df_main, ["sub_penugasan", "sub penugasan"])
-    col_activities = _find_col(df_main, ["activities", "activity"])
-    col_course = _find_col(df_main, ["course_name", "course", "course name"])
-    col_bobot = _find_col(df_main, ["bobot lh", "bobot_lh", "bobot"])
+    col_name = _find_col(df_main, ["name", "expert", "nama"])
+    col_course = _find_col(df_main, ["course_name", "course", "event", "course name"])
+    col_variasi = _find_col(df_main, ["variasi", "variation"])
+    col_sub = _find_col(df_main, ["sub_penugasan", "penugasan"])
 
-    if not col_name:
-        st.error("Kolom 'name' tidak ditemukan di sheet 'General'.")
+    if not col_name or not col_course:
+        st.error("Kolom 'name' atau 'course_name/event' tidak ditemukan di data utama.")
         return
 
+    # normalize
     df_main = df_main.rename(columns={c: c.strip() for c in df_main.columns})
     df_main["NAME_UP"] = df_main[col_name].astype(str).str.strip().str.upper()
-    df_main["COURSE_NORM"] = df_main[col_course].apply(_norm_text) if col_course else ""
-    df_main["ACTIVITIES_NORM"] = df_main[col_activities].apply(_norm_text) if col_activities else ""
+    df_main["EVENT_NORM"] = df_main[col_course].apply(_norm_text)
+    df_main["VARIASI_TEXT"] = df_main[col_variasi].astype(str).fillna("") if col_variasi else ""
     df_main["SUB_PENUGASAN"] = df_main[col_sub].astype(str).fillna("") if col_sub else ""
     df_main["NIK"] = df_main[col_nik].astype(str).fillna("") if col_nik else ""
 
-    # filter hanya nama yang ada di mapping
+    # mapping sets
     lim1_names = set(mapping_df["NAME_UP"].tolist())
-    df_lim1 = df_main[df_main["NAME_UP"].isin(lim1_names)].copy()
-    if df_lim1.empty:
-        st.warning("Tidak ada baris di sheet 'General' yang cocok dengan mapping nameactlim1.")
+    mapping_activities = [a for a in mapping_df["ACTIVITY_NORM"].tolist() if a]
+
+    def event_matches_any(ev_norm):
+        if not isinstance(ev_norm, str) or ev_norm == "":
+            return False
+        for act in mapping_activities:
+            if act and act in ev_norm:
+                return True
+        return False
+
+    # include rows where name in list OR event matches any mapping activity
+    df_filtered = df_main[df_main["NAME_UP"].isin(lim1_names) | df_main["EVENT_NORM"].apply(event_matches_any)].copy()
+    if df_filtered.empty:
+        st.warning("Tidak ada baris yang cocok berdasarkan nama OR event dari daftar mapping.")
         return
 
-    st.subheader("Preview data (baris yang cocok dengan LIM1)")
-    preview_cols = []
-    if col_nik: preview_cols.append(col_nik)
-    preview_cols += [col_name]
-    if col_sub: preview_cols.append(col_sub)
-    if col_activities: preview_cols.append(col_activities)
-    if col_course: preview_cols.append(col_course)
-    st.dataframe(df_lim1[preview_cols].head(200))
+    st.subheader("Preview (filtered by mapping names OR mapping events)")
+    preview_cols = [col_name, col_course]
+    if col_sub:
+        preview_cols.append(col_sub)
+    if col_variasi:
+        preview_cols.append(col_variasi)
+    if col_nik:
+        preview_cols.insert(0, col_nik)
+    st.dataframe(df_filtered[preview_cols].head(200))
 
-    # hitung frekuensi berdasarkan pasangan name+course_name pada mapping
-    records = []
-    for _, pair in mapping_df.iterrows():
-        name_up = pair["NAME_UP"]
-        act_norm = pair["ACTIVITY_NORM"]
-        act_display = pair.get("ACTIVITY", "")
-        df_person = df_lim1[df_lim1["NAME_UP"] == name_up]
-        if df_person.empty:
-            continue
-        mask = df_person["COURSE_NORM"].str.contains(act_norm, na=False) | df_person["ACTIVITIES_NORM"].str.contains(act_norm, na=False)
-        freq = int(mask.sum())
-        if freq == 0:
-            continue
-        sample = df_person[mask].iloc[0]
+    # aggregate by expert + event (count frequency) and compute bobot from 'variasi'
+    rows = []
+    grouped = df_filtered.groupby(["NAME_UP", "EVENT_NORM"], dropna=False)
+    for (name_up, ev_norm), group in grouped:
+        freq = int(len(group))
+        sample = group.iloc[0]
         nik_val = sample.get("NIK", "")
-        name_val = sample.get(col_name, sample.get("NAME_UP", ""))
+        name_val = sample.get(col_name, name_up)
+        activity_display = sample.get(col_course, "")
         sub_pen = sample.get("SUB_PENUGASAN", "")
-        explicit_bobot = None
-        if col_bobot:
-            try:
-                explicit_bobot = float(str(sample.get(col_bobot)).replace(",", "."))
-            except Exception:
-                explicit_bobot = None
-        bobot_lh = explicit_bobot if explicit_bobot and explicit_bobot > 0 else _assign_bobot_from_text(sub_pen) or _assign_bobot_from_text(act_display)
-        point = round(bobot_lh * freq, 2)
-        records.append({
+
+        # prefer variasi column values (first non-empty)
+        variasi_vals = [str(x).strip() for x in group["VARIASI_TEXT"].tolist() if str(x).strip()]
+        bobot = None
+        if variasi_vals:
+            # try numeric first
+            for v in variasi_vals:
+                try:
+                    bobot = float(v.replace(",", "."))
+                    break
+                except Exception:
+                    pass
+            if bobot is None:
+                bobot = _assign_bobot_from_text(variasi_vals[0])
+        else:
+            # fallback to sub_pen or activity_display inference
+            bobot = _assign_bobot_from_text(sub_pen or activity_display or "")
+
+        point = round(bobot * freq, 2)
+        rows.append({
             "NIK": nik_val,
             "NAME": name_val,
-            "SUB_PENUGASAN": sub_pen,
-            "ACTIVITIES": act_display,
-            "course_name": act_display,
-            "BOBOT LH": bobot_lh,
+            "EVENT": activity_display,
+            "EVENT_NORM": ev_norm,
+            "BOBOT LH": bobot,
             "FREKUENSI": freq,
             "POIN BOBOT": point
         })
 
-    if not records:
-        st.info("Tidak ditemukan pasangan name+course_name pada data utama sesuai mapping.")
+    df_records = pd.DataFrame(rows)
+    if df_records.empty:
+        st.info("Tidak ditemukan record setelah agregasi.")
         return
-
-    df_records = pd.DataFrame.from_records(records)
     df_records.insert(0, "no", range(1, len(df_records) + 1))
 
-    # tampilkan tabel dengan styling header oranye (menggunakan to_html)
-    styler = (df_records[["no","NIK","NAME","SUB_PENUGASAN","ACTIVITIES","course_name","BOBOT LH","FREKUENSI","POIN BOBOT"]]
-              .style.set_table_styles([{"selector":"th","props":[("background-color","#d9643a"),("color","white")]},
-                                       {"selector":"td","props":[("padding","6px")]}])
-              .format({"BOBOT LH": "{:.2f}", "POIN BOBOT": "{:.2f}"}))
-    st.subheader("Detail per record")
+    st.subheader("Detail Variasi Penugasan (filtered)")
+    styler = (df_records[["no", "NIK", "NAME", "EVENT", "BOBOT LH", "FREKUENSI", "POIN BOBOT"]]
+              .style.set_table_styles([
+                  {"selector": "th", "props": [("background-color", "#d9643a"), ("color", "white"), ("text-align", "left")]},
+                  {"selector": "td", "props": [("padding", "6px")]}
+              ]).format({"BOBOT LH": "{:.2f}", "POIN BOBOT": "{:.2f}"}))
     st.markdown(styler.to_html(), unsafe_allow_html=True)
 
-    # ringkasan per expert
+    # summary per expert
     summary = (df_records
-               .groupby(["NIK","NAME"], as_index=False)
-               .agg(total_point=("POIN BOBOT","sum"),
-                    total_freq=("FREKUENSI","sum"))
+               .groupby(["NIK", "NAME"], as_index=False)
+               .agg(total_point=("POIN BOBOT", "sum"), total_freq=("FREKUENSI", "sum"))
                .sort_values("total_point", ascending=False))
     st.subheader("Ringkasan per Expert (Total Point)")
     st.dataframe(summary)
@@ -454,25 +668,32 @@ def variation_page():
     min_total_point = st.number_input("Minimal Total Point Expert (batas bawah)", value=1.0, step=0.1)
 
     summary["total_point_clamped"] = summary["total_point"].apply(lambda v: max(v, float(min_total_point)))
-    summary["score_percent"] = (summary["total_point_clamped"] / float(max_point)) * 100
-    summary["score_percent"] = summary["score_percent"].clip(0,100).round(2)
+    summary["score_percent"] = (summary["total_point_clamped"] / float(max_point) * 100).clip(0, 100).round(2)
 
     st.subheader("Skor Normalisasi (Top 20)")
     st.dataframe(summary.head(20))
 
-    # download
-    csv_bytes = df_records.to_csv(index=False).encode("utf-8")
-    st.download_button("Download detail CSV", data=csv_bytes, file_name="variation_detail.csv", mime="text/csv")
+    # downloads
+    st.download_button("Download detail CSV", data=df_records.to_csv(index=False).encode("utf-8"), file_name="variation_detail.csv", mime="text/csv")
     st.download_button("Download summary CSV", data=summary.to_csv(index=False).encode("utf-8"), file_name="variation_summary.csv", mime="text/csv")
 
-    # Analisis singkat via OpenAI (genai) - optional, non-blocking
+    # OpenAI analysis (best-effort)
     try:
         top3 = summary.head(3).to_dict(orient="records")
-        prompt = "Buat ringkasan singkat (3 kalimat) tentang top 3 expert berdasarkan total_point: " + str(top3)
+        prompt = ("Buat ringkasan singkat (3 kalimat) dan insight tentang top 3 expert berdasarkan total_point. "
+                  f"Top3: {top3}")
         resp = genai.responses.create(model="models/text-bison-001", input=prompt)
-        analysis = resp.output[0].content[0].text if hasattr(resp, "output") else str(resp)
+        analysis = ""
+        if hasattr(resp, "output") and getattr(resp, "output"):
+            parts = []
+            for out in resp.output:
+                if hasattr(out, "content"):
+                    for c in out.content:
+                        parts.append(getattr(c, "text", str(c)))
+            analysis = " ".join(parts).strip()
+        else:
+            analysis = str(resp)
         st.subheader("Analisis (OpenAI)")
         st.write(analysis)
     except Exception:
-        # jangan ganggu flow jika gagal panggil genai
         st.info("Analisis OpenAI tidak tersedia (cek konfigurasi genai).")
