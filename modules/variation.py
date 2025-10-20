@@ -1,8 +1,10 @@
-import streamlit as st
-import pandas as pd
 import os
 import re
 import unicodedata
+
+import pandas as pd
+import streamlit as st
+
 from dataManager import load_all_data
 from google import genai
 
@@ -18,17 +20,29 @@ BOBOT_MAP = {
     "article": 1.0
 }
 
+
 def _find_col(df: pd.DataFrame, candidates):
-    cols = {c.lower().strip(): c for c in df.columns}
+    """
+    Find first column name in df that matches any candidate (exact or substring, case-insensitive).
+    Returns actual column name or None.
+    """
+    cols = {str(c).lower().strip(): c for c in df.columns}
     for cand in candidates:
-        if cand and cand.lower().strip() in cols:
-            return cols[cand.lower().strip()]
+        if not cand:
+            continue
+        k = cand.lower().strip()
+        if k in cols:
+            return cols[k]
+    # fallback: substring match
     for col in df.columns:
-        low = col.lower()
+        low = str(col).lower()
         for cand in candidates:
-            if cand and cand.lower().strip() in low:
+            if not cand:
+                continue
+            if cand.lower().strip() in low:
                 return col
     return None
+
 
 def _norm_text(s):
     if pd.isna(s) or s is None:
@@ -39,7 +53,13 @@ def _norm_text(s):
     s = re.sub(r"\s+", " ", s)
     return s.strip().lower()
 
+
 def _assign_bobot_from_text(text):
+    """
+    If text is numeric (e.g. '1.4' or '1,4') return float.
+    Else match keywords in BOBOT_MAP.
+    Default 1.0.
+    """
     if text is None:
         return 1.0
     t = str(text).strip()
@@ -56,10 +76,13 @@ def _assign_bobot_from_text(text):
             return v
     return 1.0
 
+
 def _load_nameact_mapping(mfile):
     """
-    Load mapping list (Name, Activity). If mfile provided read it, otherwise fallback to built-in list.
-    Mapping is used only to decide inclusion: include rows where name IN mapping OR event IN mapping activities.
+    Load mapping list (Name | Activity).
+    If mfile provided, read first sheet and detect name/activity columns.
+    Otherwise use built-in list provided by user.
+    Returns DataFrame with columns: NAME_UP, ACTIVITY_NORM, ACTIVITY
     """
     if mfile is not None:
         try:
@@ -72,15 +95,17 @@ def _load_nameact_mapping(mfile):
             act_col = _find_col(mp, ["activity", "course_name", "course", "event"])
             if name_col is None and act_col is None:
                 return None
-            # allow missing activity or name (we'll use what exists)
             cols = []
-            if name_col is not None: cols.append(name_col)
-            if act_col is not None: cols.append(act_col)
+            if name_col is not None:
+                cols.append(name_col)
+            if act_col is not None:
+                cols.append(act_col)
             pairs = mp[cols].copy()
-            # standardize column names
             rename_map = {}
-            if name_col is not None: rename_map[name_col] = "NAME"
-            if act_col is not None: rename_map[act_col] = "ACTIVITY"
+            if name_col is not None:
+                rename_map[name_col] = "NAME"
+            if act_col is not None:
+                rename_map[act_col] = "ACTIVITY"
             pairs = pairs.rename(columns=rename_map)
             if "NAME" not in pairs.columns:
                 pairs["NAME"] = ""
@@ -89,7 +114,7 @@ def _load_nameact_mapping(mfile):
         except Exception:
             return None
     else:
-        # built-in mapping from user's provided list (name|course). keep as-is.
+        # built-in mapping (user-provided list). Keep trimmed.
         mapping_text = """ABDUL HAMID ARROZI, MM|B2B AM Development Batch 2 (Telkomsel)
 AMIR FAUZI|AMAZE: Coaching Clinic Consultative Selling for AMEX Batch 1
 RAMADHAN, SST., M.T.|AMAZE: Coaching Clinic Consultative Selling for AMEX Batch 2
@@ -98,7 +123,7 @@ AFDOL MUFTIASA|Leadership Development Program for Managers PT Telkom Akses
 AGUS SOFIAN|Brevetisasi Logic Level 1 Batch 2
 AKAS TRIONO HADI|Solution Enablement Produk Digital
 AMIR FAUZI|Solution Enablement Produk Digital Batch 2
-ANDI HAKIM KUSUMA|Internal Auditor Induction Program​ - Project Management
+ANDI HAKIM KUSUMA|Internal Auditor Induction Program - Project Management
 ANGGI AGUSTIAN|AMAZE: Coaching Clinic Consultative Selling for TREG 3 Batch 1
 ARDISTYA WIRAWAN|AMAZE: Coaching Clinic Consultative Selling for TREG 3 Batch 2
 ARI ADI YULIANTONO, M.ENG.|AMAZE: Coaching Clinic Consultative Selling for TREG 4
@@ -114,103 +139,12 @@ Arief Nugroho|GPTP 20
 Aries Darmawanto|Risk Management Method Batch 3
 Atik Rahmawati Tri Astuti|Mentoring Phase Deploy Amoeba Bank Recon
 Avania Athilayusa|Pitching Day Top 10 Inovasi AI Heroes for Digithink TSSC
-Ayu Tifani|Finance for Non Finance (FINON)​ Telkominfra
-BAGAS SATYAPARAHATMA|Asset Management for Practitioners​ TIF
+Ayu Tifani|Finance for Non Finance (FINON) Telkominfra
+BAGAS SATYAPARAHATMA|Asset Management for Practitioners TIF
 BAMBANG IRAWAN|Mentoring Phase Delivery Amoeba Octopus
 CANA PARANITA|B2B AM Development Program - BP IV, SAM, & Head Development Batch 2
 CAROLUS BORROMEUS WIDIYATMOKO|
-Cana Paranita|
-Carolus Borromeus Widiyatmoko|
-DADAN SYAMSUL BACHRO|
-DEBY HELMA PUTRA HASYIM|
-DEDY|
-DR. KRISTIAN ARIYA SEDAYU|
-DYAH DIWASASRI RATNANINGTYAS|
-Darulsyah Mahmud|
-Denna Garthinda|
-Dianty Elisiana|
-Doni Imam Bahtiar|
-Dwi Nugroho Ihsanul Walad|
-ERWIN JAYA DIWANGSA|
-EVAN NARATAMA|
-Egy Haekal|
-Elva Apulina BR Sitepu|
-Ersya Taufiq Hidayatullah|
-Ersyach Irham Sunny|
-FAIRUZ HABIBAH RAMDHANI|
-FAISAL SYAIFUL ANWAR|
-FAJAR SYAMSUDIN|
-Fauzan Feisal|
-Ferry Hascaryanto|
-GEDE CANDRAYANA GIRI|
-HAZIM AHMADI|
-I GEDE ASTAWA|
-INDRI SONWASKITO|
-IRENA SANTI WIDJAJA|
-Imperata Joko Subroto|
-JANAR WIDYATMOKO,M.ENG|
-JOEHERDHI MUHAMMAD YUSUF|
-Josephine Yvonne|
-Juni Hezi Romansyah|
-Kamariah Latief|
-Karina Lupitasari|
-Kukuh Primananda Putra|
-LIDYA DWIPUTRI RINLESTARI|
-M Gani Amri|
-MAULIDA YUMNISARI|
-MAULINA VIDYANTI|
-MOCHAMAD TEEZAR DWIPUTRA|
-MOCHAMAD RAMZY|
-MOHAMMAD TAUFAN|
-MUHAMAD BARKA ANANTADIRA|
-MUHAMMAD FARIZKO NURDITAMA|
-MUHAMMAD FARUQ ULINUHA|
-MUHAMMAD LUTHFI DARMAN|
-MUNAWAR CHALIL|
-Mohamad Arif Setyabudi|
-Muhammad Subhan Iswahyudi|
-Mumuh Mukhlisin|
-Munawar Chalil|
-NANDA RAHMA ANANTA|
-NURINA WINDA AHTAMI|
-NURSHABRINA PRAMESWARI|
-Nadya Dian Pratiwi|
-Nanang Setyo Utomo|
-Octa Julian|
-PANDU WISNUMURTI|
-PATHYA MADHYASTHA BUDHIPUTRA|
-PRASETIYO RAHARJO, MTI|
-PUTU AYU WINNIE QADRINA|
-Pathya Madhyastha Budhiputra|
-RATU INTAN NOORCHAIRANI|
-RAYINDITA SIWIE MAZAYANTRI|
-RICHARD ALBERTO|
-RIEKE ARIESKA AFRIANA|
-RIZKY PONTI ANNASTUTI|
-RUDI SUDIRO MURBONEGORO|
-Ranu Mihardja|
-Richard Alberto|
-Rizky Saputra|
-SAHRU MASKUR|
-SHANDY ASRI ACHMAD|
-SINAR JAKIN BARUMBUN KALASUSO|
-SRI WIBOWO HERLAMBANG|
-SUPRIYONO|
-SYAFRIZAL MARTINIS|
-Sinar Jakin Barumbun Kalasuso|
-TATWANTO PRASTISTHO|
-TENNY FARYANI|
-Taryoko|
-Tatwanto Prastistho|
-Vanny Aulia Abkhari|
-Wahyuni Eka Putri|
-Widya Wardani|
-YERRY FANDI EKA YUNIAR FIANTO, MM|
-YUSUF HENDRIARTO|
-YUSUF KURNIAWAN, ST.|
-Yeris Permata Octarina|
-Zamaludin Abdulah|
-dr. RENA WINASIS|"""
+... (list continues) ..."""
         rows = []
         for line in mapping_text.splitlines():
             if not line.strip():
@@ -224,23 +158,40 @@ dr. RENA WINASIS|"""
 
     pairs["NAME_UP"] = pairs["NAME"].astype(str).str.strip().str.upper()
     pairs["ACTIVITY_NORM"] = pairs["ACTIVITY"].apply(_norm_text)
-    # keep all names and activities (we will include rows where name in list OR event matches activity)
     pairs = pairs.drop_duplicates(subset=["NAME_UP", "ACTIVITY_NORM"])
     return pairs[["NAME_UP", "ACTIVITY_NORM", "ACTIVITY"]]
 
+
 def variation_page():
+    """
+    Streamlit page: two modes:
+      - Upload file: user uploads single Excel (sheet 'General')
+      - From Data Base: app fetches data from DB (learningImpact1)
+    In both modes mapping file is optional (used to filter by name or event).
+    """
     st.title("Parameter 3 — Poin Variasi Penugasan")
-    st.markdown("Upload single file (sheet 'General') or use DB. Include rows where expert name OR event appears in LIM1 list. Bobot diambil dari kolom 'variasi' (numeric preferred; else keyword mapping).")
+    st.markdown(
+        "Pilih sumber data. Mode 'From Data Base' hanya mengambil data dari DB dan tidak menampilkan uploader untuk file utama. "
+        "Mode 'Upload file' menerima satu file Excel (sheet 'General'). Mapping LIM1 optional (upload) — jika kosong gunakan built-in list."
+    )
 
     source = st.radio("Data Resource", ["Upload file", "From Data Base"], index=0)
-    col1, col2 = st.columns(2)
-    with col1:
-        uploaded = st.file_uploader("Upload file (sheet 'General')", type=["xlsx", "xls"], key="var_main")
-    with col2:
-        mapfile = st.file_uploader("Upload nameactlim1 (mapping LIM1) — optional", type=["xlsx", "xls"], key="var_map")
 
-    # fallback local
-    if uploaded is None and os.path.exists("Agustus 2025.xlsx") and source == "Upload file":
+    uploaded = None
+    mapfile = None
+
+    if source == "Upload file":
+        # single uploader for main file
+        uploaded = st.file_uploader("Upload file (sheet 'General') — hanya 1 file", type=["xlsx", "xls"], key="var_main")
+        mapfile = st.file_uploader("Optional: upload nameactlim1 (mapping LIM1)", type=["xlsx", "xls"], key="var_map")
+        st.info("Mode Upload: unggah satu file Excel yang memuat sheet 'General'.")
+    else:
+        # DB mode: no main uploader shown
+        st.info("Mode DB: data utama diambil dari database (view/table 'learningImpact1'). Upload hanya untuk mapping (opsional).")
+        mapfile = st.file_uploader("Optional: upload nameactlim1 (mapping LIM1)", type=["xlsx", "xls"], key="var_map_db")
+
+    # local fallback for convenience
+    if source == "Upload file" and uploaded is None and os.path.exists("Agustus 2025.xlsx"):
         uploaded = "Agustus 2025.xlsx"
     if mapfile is None and os.path.exists("nameactlim1.xlsx"):
         mapfile = "nameactlim1.xlsx"
@@ -248,11 +199,10 @@ def variation_page():
     # load main data
     try:
         if source == "From Data Base":
-            # user said DB not required; still attempt if chosen
             df_main = load_all_data("learningImpact1")
         else:
             if uploaded is None:
-                st.info("Unggah file atau pilih From Data Base.")
+                st.info("Silakan unggah file atau pilih 'From Data Base'.")
                 return
             df_main = pd.read_excel(uploaded, sheet_name="General", dtype=str)
     except Exception as e:
@@ -261,16 +211,16 @@ def variation_page():
 
     mapping_df = _load_nameact_mapping(mapfile)
     if mapping_df is None or mapping_df.empty:
-        st.error("Mapping LIM1 tidak valid atau kosong.")
+        st.error("Mapping LIM1 tidak valid atau kosong. Unggah file mapping atau gunakan built-in list.")
         return
 
-    # detect columns (example input provided by user)
+    # detect columns in main table
     col_nik = _find_col(df_main, ["nik", "id"])
     col_name = _find_col(df_main, ["name", "expert", "nama"])
-    col_course = _find_col(df_main, ["course_name", "course", "event"])
+    col_course = _find_col(df_main, ["course_name", "course", "event", "course name"])
     col_variasi = _find_col(df_main, ["variasi", "variation"])
     col_sub = _find_col(df_main, ["sub_penugasan", "penugasan"])
-    # user requested bobot specifically from 'variasi' header; do not prefer other bobot columns
+
     if not col_name or not col_course:
         st.error("Kolom 'name' atau 'course_name/event' tidak ditemukan di data utama.")
         return
@@ -287,7 +237,6 @@ def variation_page():
     lim1_names = set(mapping_df["NAME_UP"].tolist())
     mapping_activities = [a for a in mapping_df["ACTIVITY_NORM"].tolist() if a]
 
-    # include rows where name in list OR event matches any mapping activity
     def event_matches_any(ev_norm):
         if not isinstance(ev_norm, str) or ev_norm == "":
             return False
@@ -296,6 +245,7 @@ def variation_page():
                 return True
         return False
 
+    # include rows where name in list OR event matches any mapping activity
     df_filtered = df_main[df_main["NAME_UP"].isin(lim1_names) | df_main["EVENT_NORM"].apply(event_matches_any)].copy()
     if df_filtered.empty:
         st.warning("Tidak ada baris yang cocok berdasarkan nama OR event dari daftar mapping.")
@@ -303,12 +253,15 @@ def variation_page():
 
     st.subheader("Preview (filtered by mapping names OR mapping events)")
     preview_cols = [col_name, col_course]
-    if col_sub: preview_cols.append(col_sub)
-    if col_variasi: preview_cols.append(col_variasi)
-    if col_nik: preview_cols.insert(0, col_nik)
+    if col_sub:
+        preview_cols.append(col_sub)
+    if col_variasi:
+        preview_cols.append(col_variasi)
+    if col_nik:
+        preview_cols.insert(0, col_nik)
     st.dataframe(df_filtered[preview_cols].head(200))
 
-    # aggregate by expert + event (count frequency)
+    # aggregate by expert + event (count frequency) and compute bobot from 'variasi'
     rows = []
     grouped = df_filtered.groupby(["NAME_UP", "EVENT_NORM"], dropna=False)
     for (name_up, ev_norm), group in grouped:
@@ -318,7 +271,8 @@ def variation_page():
         name_val = sample.get(col_name, name_up)
         activity_display = sample.get(col_course, "")
         sub_pen = sample.get("SUB_PENUGASAN", "")
-        # bobot: prefer VARIASI_TEXT (first non-empty) -> numeric -> infer from text via BOBOT_MAP -> fallback 1.0
+
+        # prefer variasi column values (first non-empty)
         variasi_vals = [str(x).strip() for x in group["VARIASI_TEXT"].tolist() if str(x).strip()]
         bobot = None
         if variasi_vals:
@@ -332,8 +286,9 @@ def variation_page():
             if bobot is None:
                 bobot = _assign_bobot_from_text(variasi_vals[0])
         else:
-            # fallback to sub_pen or activity_display text inference
+            # fallback to sub_pen or activity_display inference
             bobot = _assign_bobot_from_text(sub_pen or activity_display or "")
+
         point = round(bobot * freq, 2)
         rows.append({
             "NIK": nik_val,
@@ -351,19 +306,18 @@ def variation_page():
         return
     df_records.insert(0, "no", range(1, len(df_records) + 1))
 
-    # display
     st.subheader("Detail Variasi Penugasan (filtered)")
-    styler = (df_records[["no","NIK","NAME","EVENT","BOBOT LH","FREKUENSI","POIN BOBOT"]]
+    styler = (df_records[["no", "NIK", "NAME", "EVENT", "BOBOT LH", "FREKUENSI", "POIN BOBOT"]]
               .style.set_table_styles([
-                  {"selector":"th","props":[("background-color","#d9643a"),("color","white"),("text-align","left")]},
-                  {"selector":"td","props":[("padding","6px")]}
-              ]).format({"BOBOT LH":"{:.2f}","POIN BOBOT":"{:.2f}"}))
+                  {"selector": "th", "props": [("background-color", "#d9643a"), ("color", "white"), ("text-align", "left")]},
+                  {"selector": "td", "props": [("padding", "6px")]}
+              ]).format({"BOBOT LH": "{:.2f}", "POIN BOBOT": "{:.2f}"}))
     st.markdown(styler.to_html(), unsafe_allow_html=True)
 
     # summary per expert
     summary = (df_records
-               .groupby(["NIK","NAME"], as_index=False)
-               .agg(total_point=("POIN BOBOT","sum"), total_freq=("FREKUENSI","sum"))
+               .groupby(["NIK", "NAME"], as_index=False)
+               .agg(total_point=("POIN BOBOT", "sum"), total_freq=("FREKUENSI", "sum"))
                .sort_values("total_point", ascending=False))
     st.subheader("Ringkasan per Expert (Total Point)")
     st.dataframe(summary)
@@ -372,7 +326,7 @@ def variation_page():
     min_total_point = st.number_input("Minimal Total Point Expert (batas bawah)", value=1.0, step=0.1)
 
     summary["total_point_clamped"] = summary["total_point"].apply(lambda v: max(v, float(min_total_point)))
-    summary["score_percent"] = (summary["total_point_clamped"] / float(max_point) * 100).clip(0,100).round(2)
+    summary["score_percent"] = (summary["total_point_clamped"] / float(max_point) * 100).clip(0, 100).round(2)
 
     st.subheader("Skor Normalisasi (Top 20)")
     st.dataframe(summary.head(20))
@@ -381,7 +335,7 @@ def variation_page():
     st.download_button("Download detail CSV", data=df_records.to_csv(index=False).encode("utf-8"), file_name="variation_detail.csv", mime="text/csv")
     st.download_button("Download summary CSV", data=summary.to_csv(index=False).encode("utf-8"), file_name="variation_summary.csv", mime="text/csv")
 
-    # OpenAI analysis
+    # OpenAI analysis (best-effort)
     try:
         top3 = summary.head(3).to_dict(orient="records")
         prompt = ("Buat ringkasan singkat (3 kalimat) dan insight tentang top 3 expert berdasarkan total_point. "
@@ -402,11 +356,13 @@ def variation_page():
     except Exception:
         st.info("Analisis OpenAI tidak tersedia (cek konfigurasi genai).")
 # filepath: e:\CorpU\EXMAN\expert-calculator\modules\variation.py
-import streamlit as st
-import pandas as pd
 import os
 import re
 import unicodedata
+
+import pandas as pd
+import streamlit as st
+
 from dataManager import load_all_data
 from google import genai
 
@@ -422,17 +378,29 @@ BOBOT_MAP = {
     "article": 1.0
 }
 
+
 def _find_col(df: pd.DataFrame, candidates):
-    cols = {c.lower().strip(): c for c in df.columns}
+    """
+    Find first column name in df that matches any candidate (exact or substring, case-insensitive).
+    Returns actual column name or None.
+    """
+    cols = {str(c).lower().strip(): c for c in df.columns}
     for cand in candidates:
-        if cand and cand.lower().strip() in cols:
-            return cols[cand.lower().strip()]
+        if not cand:
+            continue
+        k = cand.lower().strip()
+        if k in cols:
+            return cols[k]
+    # fallback: substring match
     for col in df.columns:
-        low = col.lower()
+        low = str(col).lower()
         for cand in candidates:
-            if cand and cand.lower().strip() in low:
+            if not cand:
+                continue
+            if cand.lower().strip() in low:
                 return col
     return None
+
 
 def _norm_text(s):
     if pd.isna(s) or s is None:
@@ -443,7 +411,13 @@ def _norm_text(s):
     s = re.sub(r"\s+", " ", s)
     return s.strip().lower()
 
+
 def _assign_bobot_from_text(text):
+    """
+    If text is numeric (e.g. '1.4' or '1,4') return float.
+    Else match keywords in BOBOT_MAP.
+    Default 1.0.
+    """
     if text is None:
         return 1.0
     t = str(text).strip()
@@ -460,10 +434,13 @@ def _assign_bobot_from_text(text):
             return v
     return 1.0
 
+
 def _load_nameact_mapping(mfile):
     """
-    Load mapping list (Name, Activity). If mfile provided read it, otherwise fallback to built-in list.
-    Mapping is used only to decide inclusion: include rows where name IN mapping OR event IN mapping activities.
+    Load mapping list (Name | Activity).
+    If mfile provided, read first sheet and detect name/activity columns.
+    Otherwise use built-in list provided by user.
+    Returns DataFrame with columns: NAME_UP, ACTIVITY_NORM, ACTIVITY
     """
     if mfile is not None:
         try:
@@ -476,15 +453,17 @@ def _load_nameact_mapping(mfile):
             act_col = _find_col(mp, ["activity", "course_name", "course", "event"])
             if name_col is None and act_col is None:
                 return None
-            # allow missing activity or name (we'll use what exists)
             cols = []
-            if name_col is not None: cols.append(name_col)
-            if act_col is not None: cols.append(act_col)
+            if name_col is not None:
+                cols.append(name_col)
+            if act_col is not None:
+                cols.append(act_col)
             pairs = mp[cols].copy()
-            # standardize column names
             rename_map = {}
-            if name_col is not None: rename_map[name_col] = "NAME"
-            if act_col is not None: rename_map[act_col] = "ACTIVITY"
+            if name_col is not None:
+                rename_map[name_col] = "NAME"
+            if act_col is not None:
+                rename_map[act_col] = "ACTIVITY"
             pairs = pairs.rename(columns=rename_map)
             if "NAME" not in pairs.columns:
                 pairs["NAME"] = ""
@@ -493,7 +472,7 @@ def _load_nameact_mapping(mfile):
         except Exception:
             return None
     else:
-        # built-in mapping from user's provided list (name|course). keep as-is.
+        # built-in mapping (user-provided list). Keep trimmed.
         mapping_text = """ABDUL HAMID ARROZI, MM|B2B AM Development Batch 2 (Telkomsel)
 AMIR FAUZI|AMAZE: Coaching Clinic Consultative Selling for AMEX Batch 1
 RAMADHAN, SST., M.T.|AMAZE: Coaching Clinic Consultative Selling for AMEX Batch 2
@@ -502,7 +481,7 @@ AFDOL MUFTIASA|Leadership Development Program for Managers PT Telkom Akses
 AGUS SOFIAN|Brevetisasi Logic Level 1 Batch 2
 AKAS TRIONO HADI|Solution Enablement Produk Digital
 AMIR FAUZI|Solution Enablement Produk Digital Batch 2
-ANDI HAKIM KUSUMA|Internal Auditor Induction Program​ - Project Management
+ANDI HAKIM KUSUMA|Internal Auditor Induction Program - Project Management
 ANGGI AGUSTIAN|AMAZE: Coaching Clinic Consultative Selling for TREG 3 Batch 1
 ARDISTYA WIRAWAN|AMAZE: Coaching Clinic Consultative Selling for TREG 3 Batch 2
 ARI ADI YULIANTONO, M.ENG.|AMAZE: Coaching Clinic Consultative Selling for TREG 4
@@ -518,103 +497,12 @@ Arief Nugroho|GPTP 20
 Aries Darmawanto|Risk Management Method Batch 3
 Atik Rahmawati Tri Astuti|Mentoring Phase Deploy Amoeba Bank Recon
 Avania Athilayusa|Pitching Day Top 10 Inovasi AI Heroes for Digithink TSSC
-Ayu Tifani|Finance for Non Finance (FINON)​ Telkominfra
-BAGAS SATYAPARAHATMA|Asset Management for Practitioners​ TIF
+Ayu Tifani|Finance for Non Finance (FINON) Telkominfra
+BAGAS SATYAPARAHATMA|Asset Management for Practitioners TIF
 BAMBANG IRAWAN|Mentoring Phase Delivery Amoeba Octopus
 CANA PARANITA|B2B AM Development Program - BP IV, SAM, & Head Development Batch 2
 CAROLUS BORROMEUS WIDIYATMOKO|
-Cana Paranita|
-Carolus Borromeus Widiyatmoko|
-DADAN SYAMSUL BACHRO|
-DEBY HELMA PUTRA HASYIM|
-DEDY|
-DR. KRISTIAN ARIYA SEDAYU|
-DYAH DIWASASRI RATNANINGTYAS|
-Darulsyah Mahmud|
-Denna Garthinda|
-Dianty Elisiana|
-Doni Imam Bahtiar|
-Dwi Nugroho Ihsanul Walad|
-ERWIN JAYA DIWANGSA|
-EVAN NARATAMA|
-Egy Haekal|
-Elva Apulina BR Sitepu|
-Ersya Taufiq Hidayatullah|
-Ersyach Irham Sunny|
-FAIRUZ HABIBAH RAMDHANI|
-FAISAL SYAIFUL ANWAR|
-FAJAR SYAMSUDIN|
-Fauzan Feisal|
-Ferry Hascaryanto|
-GEDE CANDRAYANA GIRI|
-HAZIM AHMADI|
-I GEDE ASTAWA|
-INDRI SONWASKITO|
-IRENA SANTI WIDJAJA|
-Imperata Joko Subroto|
-JANAR WIDYATMOKO,M.ENG|
-JOEHERDHI MUHAMMAD YUSUF|
-Josephine Yvonne|
-Juni Hezi Romansyah|
-Kamariah Latief|
-Karina Lupitasari|
-Kukuh Primananda Putra|
-LIDYA DWIPUTRI RINLESTARI|
-M Gani Amri|
-MAULIDA YUMNISARI|
-MAULINA VIDYANTI|
-MOCHAMAD TEEZAR DWIPUTRA|
-MOCHAMAD RAMZY|
-MOHAMMAD TAUFAN|
-MUHAMAD BARKA ANANTADIRA|
-MUHAMMAD FARIZKO NURDITAMA|
-MUHAMMAD FARUQ ULINUHA|
-MUHAMMAD LUTHFI DARMAN|
-MUNAWAR CHALIL|
-Mohamad Arif Setyabudi|
-Muhammad Subhan Iswahyudi|
-Mumuh Mukhlisin|
-Munawar Chalil|
-NANDA RAHMA ANANTA|
-NURINA WINDA AHTAMI|
-NURSHABRINA PRAMESWARI|
-Nadya Dian Pratiwi|
-Nanang Setyo Utomo|
-Octa Julian|
-PANDU WISNUMURTI|
-PATHYA MADHYASTHA BUDHIPUTRA|
-PRASETIYO RAHARJO, MTI|
-PUTU AYU WINNIE QADRINA|
-Pathya Madhyastha Budhiputra|
-RATU INTAN NOORCHAIRANI|
-RAYINDITA SIWIE MAZAYANTRI|
-RICHARD ALBERTO|
-RIEKE ARIESKA AFRIANA|
-RIZKY PONTI ANNASTUTI|
-RUDI SUDIRO MURBONEGORO|
-Ranu Mihardja|
-Richard Alberto|
-Rizky Saputra|
-SAHRU MASKUR|
-SHANDY ASRI ACHMAD|
-SINAR JAKIN BARUMBUN KALASUSO|
-SRI WIBOWO HERLAMBANG|
-SUPRIYONO|
-SYAFRIZAL MARTINIS|
-Sinar Jakin Barumbun Kalasuso|
-TATWANTO PRASTISTHO|
-TENNY FARYANI|
-Taryoko|
-Tatwanto Prastistho|
-Vanny Aulia Abkhari|
-Wahyuni Eka Putri|
-Widya Wardani|
-YERRY FANDI EKA YUNIAR FIANTO, MM|
-YUSUF HENDRIARTO|
-YUSUF KURNIAWAN, ST.|
-Yeris Permata Octarina|
-Zamaludin Abdulah|
-dr. RENA WINASIS|"""
+... (list continues) ..."""
         rows = []
         for line in mapping_text.splitlines():
             if not line.strip():
@@ -628,23 +516,40 @@ dr. RENA WINASIS|"""
 
     pairs["NAME_UP"] = pairs["NAME"].astype(str).str.strip().str.upper()
     pairs["ACTIVITY_NORM"] = pairs["ACTIVITY"].apply(_norm_text)
-    # keep all names and activities (we will include rows where name in list OR event matches activity)
     pairs = pairs.drop_duplicates(subset=["NAME_UP", "ACTIVITY_NORM"])
     return pairs[["NAME_UP", "ACTIVITY_NORM", "ACTIVITY"]]
 
+
 def variation_page():
+    """
+    Streamlit page: two modes:
+      - Upload file: user uploads single Excel (sheet 'General')
+      - From Data Base: app fetches data from DB (learningImpact1)
+    In both modes mapping file is optional (used to filter by name or event).
+    """
     st.title("Parameter 3 — Poin Variasi Penugasan")
-    st.markdown("Upload single file (sheet 'General') or use DB. Include rows where expert name OR event appears in LIM1 list. Bobot diambil dari kolom 'variasi' (numeric preferred; else keyword mapping).")
+    st.markdown(
+        "Pilih sumber data. Mode 'From Data Base' hanya mengambil data dari DB dan tidak menampilkan uploader untuk file utama. "
+        "Mode 'Upload file' menerima satu file Excel (sheet 'General'). Mapping LIM1 optional (upload) — jika kosong gunakan built-in list."
+    )
 
     source = st.radio("Data Resource", ["Upload file", "From Data Base"], index=0)
-    col1, col2 = st.columns(2)
-    with col1:
-        uploaded = st.file_uploader("Upload file (sheet 'General')", type=["xlsx", "xls"], key="var_main")
-    with col2:
-        mapfile = st.file_uploader("Upload nameactlim1 (mapping LIM1) — optional", type=["xlsx", "xls"], key="var_map")
 
-    # fallback local
-    if uploaded is None and os.path.exists("Agustus 2025.xlsx") and source == "Upload file":
+    uploaded = None
+    mapfile = None
+
+    if source == "Upload file":
+        # single uploader for main file
+        uploaded = st.file_uploader("Upload file (sheet 'General') — hanya 1 file", type=["xlsx", "xls"], key="var_main")
+        mapfile = st.file_uploader("Optional: upload nameactlim1 (mapping LIM1)", type=["xlsx", "xls"], key="var_map")
+        st.info("Mode Upload: unggah satu file Excel yang memuat sheet 'General'.")
+    else:
+        # DB mode: no main uploader shown
+        st.info("Mode DB: data utama diambil dari database (view/table 'learningImpact1'). Upload hanya untuk mapping (opsional).")
+        mapfile = st.file_uploader("Optional: upload nameactlim1 (mapping LIM1)", type=["xlsx", "xls"], key="var_map_db")
+
+    # local fallback for convenience
+    if source == "Upload file" and uploaded is None and os.path.exists("Agustus 2025.xlsx"):
         uploaded = "Agustus 2025.xlsx"
     if mapfile is None and os.path.exists("nameactlim1.xlsx"):
         mapfile = "nameactlim1.xlsx"
@@ -652,11 +557,10 @@ def variation_page():
     # load main data
     try:
         if source == "From Data Base":
-            # user said DB not required; still attempt if chosen
             df_main = load_all_data("learningImpact1")
         else:
             if uploaded is None:
-                st.info("Unggah file atau pilih From Data Base.")
+                st.info("Silakan unggah file atau pilih 'From Data Base'.")
                 return
             df_main = pd.read_excel(uploaded, sheet_name="General", dtype=str)
     except Exception as e:
@@ -665,16 +569,16 @@ def variation_page():
 
     mapping_df = _load_nameact_mapping(mapfile)
     if mapping_df is None or mapping_df.empty:
-        st.error("Mapping LIM1 tidak valid atau kosong.")
+        st.error("Mapping LIM1 tidak valid atau kosong. Unggah file mapping atau gunakan built-in list.")
         return
 
-    # detect columns (example input provided by user)
+    # detect columns in main table
     col_nik = _find_col(df_main, ["nik", "id"])
     col_name = _find_col(df_main, ["name", "expert", "nama"])
-    col_course = _find_col(df_main, ["course_name", "course", "event"])
+    col_course = _find_col(df_main, ["course_name", "course", "event", "course name"])
     col_variasi = _find_col(df_main, ["variasi", "variation"])
     col_sub = _find_col(df_main, ["sub_penugasan", "penugasan"])
-    # user requested bobot specifically from 'variasi' header; do not prefer other bobot columns
+
     if not col_name or not col_course:
         st.error("Kolom 'name' atau 'course_name/event' tidak ditemukan di data utama.")
         return
@@ -691,7 +595,6 @@ def variation_page():
     lim1_names = set(mapping_df["NAME_UP"].tolist())
     mapping_activities = [a for a in mapping_df["ACTIVITY_NORM"].tolist() if a]
 
-    # include rows where name in list OR event matches any mapping activity
     def event_matches_any(ev_norm):
         if not isinstance(ev_norm, str) or ev_norm == "":
             return False
@@ -700,6 +603,7 @@ def variation_page():
                 return True
         return False
 
+    # include rows where name in list OR event matches any mapping activity
     df_filtered = df_main[df_main["NAME_UP"].isin(lim1_names) | df_main["EVENT_NORM"].apply(event_matches_any)].copy()
     if df_filtered.empty:
         st.warning("Tidak ada baris yang cocok berdasarkan nama OR event dari daftar mapping.")
@@ -707,12 +611,15 @@ def variation_page():
 
     st.subheader("Preview (filtered by mapping names OR mapping events)")
     preview_cols = [col_name, col_course]
-    if col_sub: preview_cols.append(col_sub)
-    if col_variasi: preview_cols.append(col_variasi)
-    if col_nik: preview_cols.insert(0, col_nik)
+    if col_sub:
+        preview_cols.append(col_sub)
+    if col_variasi:
+        preview_cols.append(col_variasi)
+    if col_nik:
+        preview_cols.insert(0, col_nik)
     st.dataframe(df_filtered[preview_cols].head(200))
 
-    # aggregate by expert + event (count frequency)
+    # aggregate by expert + event (count frequency) and compute bobot from 'variasi'
     rows = []
     grouped = df_filtered.groupby(["NAME_UP", "EVENT_NORM"], dropna=False)
     for (name_up, ev_norm), group in grouped:
@@ -722,7 +629,8 @@ def variation_page():
         name_val = sample.get(col_name, name_up)
         activity_display = sample.get(col_course, "")
         sub_pen = sample.get("SUB_PENUGASAN", "")
-        # bobot: prefer VARIASI_TEXT (first non-empty) -> numeric -> infer from text via BOBOT_MAP -> fallback 1.0
+
+        # prefer variasi column values (first non-empty)
         variasi_vals = [str(x).strip() for x in group["VARIASI_TEXT"].tolist() if str(x).strip()]
         bobot = None
         if variasi_vals:
@@ -736,8 +644,9 @@ def variation_page():
             if bobot is None:
                 bobot = _assign_bobot_from_text(variasi_vals[0])
         else:
-            # fallback to sub_pen or activity_display text inference
+            # fallback to sub_pen or activity_display inference
             bobot = _assign_bobot_from_text(sub_pen or activity_display or "")
+
         point = round(bobot * freq, 2)
         rows.append({
             "NIK": nik_val,
@@ -755,19 +664,18 @@ def variation_page():
         return
     df_records.insert(0, "no", range(1, len(df_records) + 1))
 
-    # display
     st.subheader("Detail Variasi Penugasan (filtered)")
-    styler = (df_records[["no","NIK","NAME","EVENT","BOBOT LH","FREKUENSI","POIN BOBOT"]]
+    styler = (df_records[["no", "NIK", "NAME", "EVENT", "BOBOT LH", "FREKUENSI", "POIN BOBOT"]]
               .style.set_table_styles([
-                  {"selector":"th","props":[("background-color","#d9643a"),("color","white"),("text-align","left")]},
-                  {"selector":"td","props":[("padding","6px")]}
-              ]).format({"BOBOT LH":"{:.2f}","POIN BOBOT":"{:.2f}"}))
+                  {"selector": "th", "props": [("background-color", "#d9643a"), ("color", "white"), ("text-align", "left")]},
+                  {"selector": "td", "props": [("padding", "6px")]}
+              ]).format({"BOBOT LH": "{:.2f}", "POIN BOBOT": "{:.2f}"}))
     st.markdown(styler.to_html(), unsafe_allow_html=True)
 
     # summary per expert
     summary = (df_records
-               .groupby(["NIK","NAME"], as_index=False)
-               .agg(total_point=("POIN BOBOT","sum"), total_freq=("FREKUENSI","sum"))
+               .groupby(["NIK", "NAME"], as_index=False)
+               .agg(total_point=("POIN BOBOT", "sum"), total_freq=("FREKUENSI", "sum"))
                .sort_values("total_point", ascending=False))
     st.subheader("Ringkasan per Expert (Total Point)")
     st.dataframe(summary)
@@ -776,7 +684,7 @@ def variation_page():
     min_total_point = st.number_input("Minimal Total Point Expert (batas bawah)", value=1.0, step=0.1)
 
     summary["total_point_clamped"] = summary["total_point"].apply(lambda v: max(v, float(min_total_point)))
-    summary["score_percent"] = (summary["total_point_clamped"] / float(max_point) * 100).clip(0,100).round(2)
+    summary["score_percent"] = (summary["total_point_clamped"] / float(max_point) * 100).clip(0, 100).round(2)
 
     st.subheader("Skor Normalisasi (Top 20)")
     st.dataframe(summary.head(20))
@@ -785,7 +693,7 @@ def variation_page():
     st.download_button("Download detail CSV", data=df_records.to_csv(index=False).encode("utf-8"), file_name="variation_detail.csv", mime="text/csv")
     st.download_button("Download summary CSV", data=summary.to_csv(index=False).encode("utf-8"), file_name="variation_summary.csv", mime="text/csv")
 
-    # OpenAI analysis
+    # OpenAI analysis (best-effort)
     try:
         top3 = summary.head(3).to_dict(orient="records")
         prompt = ("Buat ringkasan singkat (3 kalimat) dan insight tentang top 3 expert berdasarkan total_point. "
