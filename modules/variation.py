@@ -538,22 +538,6 @@ def variation_page():
     uploaded = None
     mapfile = None
 
-    ##if source == "Upload file":
-    ##   # single uploader for main file
-    #    uploaded = st.file_uploader("Upload file (sheet 'General') — hanya 1 file", type=["xlsx", "xls"], key="var_main")
-    #    mapfile = st.file_uploader("Optional: upload nameactlim1 (mapping LIM1)", type=["xlsx", "xls"], key="var_map")
-    #    st.info("Mode Upload: unggah satu file Excel yang memuat sheet 'General'.")
-    #else:
-    #    # DB mode: no main uploader shown
-    #    st.info("Mode DB: data utama diambil dari database (view/table 'learningImpact1'). Upload hanya untuk mapping (opsional).")
-    #    mapfile = st.file_uploader("Optional: upload nameactlim1 (mapping LIM1)", type=["xlsx", "xls"], key="var_map_db")
-
-    # local fallback for convenience
-    ##if source == "Upload file" and uploaded is None and os.path.exists("Agustus 2025.xlsx"):
-    ##    uploaded = "Agustus 2025.xlsx"
-    ##if mapfile is None and os.path.exists("nameactlim1.xlsx"):
-    ##    mapfile = "nameactlim1.xlsx"
-
     # load main data
     try:
         if source == "From Data Base":
