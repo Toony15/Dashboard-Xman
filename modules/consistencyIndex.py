@@ -6,4 +6,4 @@ from google import genai
 from dataManager import load_all_data
 
 def consistencyIndexPage():
-    st.write("Performance index page")
+    st.write("Cinsistensy index page")
