@@ -10,7 +10,6 @@ from dataManager import load_all_data
 from google import genai
 
 # bobot berdasarkan kata kunci (case-insensitive) - fallback jika tidak ada nilai eksplisit
-# keys are substrings matched against normalized text; values are the weight (bobot)
 BOBOT_MAP = {
     "coach": 1.5,
     "mentor": 1.4,
@@ -28,7 +27,6 @@ def _find_col(df: pd.DataFrame, candidates):
     Find first column name in df that matches any candidate (exact or substring, case-insensitive).
     Returns actual column name or None.
     """
-    # build a map of lower-cased column names to original names for exact matching
     cols = {str(c).lower().strip(): c for c in df.columns}
     for cand in candidates:
         if not cand:
@@ -37,7 +35,6 @@ def _find_col(df: pd.DataFrame, candidates):
         if k in cols:
             return cols[k]
     # fallback: substring match
-    # if no exact match, try substring match against each column name
     for col in df.columns:
         low = str(col).lower()
         for cand in candidates:
@@ -53,7 +50,6 @@ def _norm_text(s):
         return ""
     s = str(s)
     s = unicodedata.normalize("NFKD", s)
-    # remove punctuation and normalize whitespace, return lowercase trimmed string
     s = re.sub(r"[^\w\s]", " ", s)
     s = re.sub(r"\s+", " ", s)
     return s.strip().lower()
@@ -76,11 +72,9 @@ def _assign_bobot_from_text(text):
     except Exception:
         pass
     s = _norm_text(t)
-    # check each keyword in normalized text; return matching weight
     for k, v in BOBOT_MAP.items():
         if k in s:
             return v
-    # default fallback
     return 1.0
 
 
@@ -91,7 +85,6 @@ def _load_nameact_mapping(mfile):
     Otherwise use built-in list provided by user.
     Returns DataFrame with columns: NAME_UP, ACTIVITY_NORM, ACTIVITY
     """
-    # If a mapping file path or uploaded file is provided, try to read it
     if mfile is not None:
         try:
             if isinstance(mfile, (str, os.PathLike)) and os.path.exists(mfile):
@@ -122,8 +115,7 @@ def _load_nameact_mapping(mfile):
         except Exception:
             return None
     else:
-        # If no mapping file provided, use the built-in (hard-coded) list
-        # This provides convenience for common names/events used in LIM1
+        # built-in mapping (user-provided list). Keep trimmed.
         mapping_text = """ABDUL HAMID ARROZI, MM|B2B AM Development Batch 2 (Telkomsel)
 AMIR FAUZI|AMAZE: Coaching Clinic Consultative Selling for AMEX Batch 1
 RAMADHAN, SST., M.T.|AMAZE: Coaching Clinic Consultative Selling for AMEX Batch 2
@@ -151,7 +143,6 @@ AZIZAH KUSUMA WARDHANY|Case Based Learning B2B GRC Treg 1
             rows.append({"NAME": n.strip(), "ACTIVITY": a.strip()})
         pairs = pd.DataFrame(rows)
 
-    # normalize mapping names and activities for matching
     pairs["NAME_UP"] = pairs["NAME"].astype(str).str.strip().str.upper()
     pairs["ACTIVITY_NORM"] = pairs["ACTIVITY"].apply(_norm_text)
     pairs = pairs.drop_duplicates(subset=["NAME_UP", "ACTIVITY_NORM"])
@@ -165,18 +156,34 @@ def variation_page():
       - From Data Base: app fetches data from DB (learningImpact1)
     In both modes mapping file is optional (used to filter by name or event).
     """
-    # Page title
     st.title("Parameter 3 — Poin Variasi Penugasan")
     st.markdown(
         "pilih menu "
         "Upload/Database"
     )
 
-    # choose data source: Upload (single Excel) or From Data Base (DB view)
     source = st.radio("Data Resource", ["Upload file", "From Data Base"], index=0)
 
+    uploaded = None
+    mapfile = None
 
-    # load main data from the selected source
+    if source == "Upload file":
+        # single uploader for main file
+        uploaded = st.file_uploader("Upload file (sheet 'General') — hanya 1 file", type=["xlsx", "xls"], key="var_main")
+        mapfile = st.file_uploader("Optional: upload nameactlim1 (mapping LIM1)", type=["xlsx", "xls"], key="var_map")
+        st.info("Mode Upload: unggah satu file Excel yang memuat sheet 'General'.")
+    else:
+        # DB mode: no main uploader shown, only optional mapping uploader
+        st.info("Mode DB: data utama diambil dari database (view/table 'learningImpact1'). Upload hanya untuk mapping (opsional).")
+        mapfile = st.file_uploader("Optional: upload nameactlim1 (mapping LIM1)", type=["xlsx", "xls"], key="var_map_db")
+
+    # local fallback for convenience
+    if source == "Upload file" and uploaded is None and os.path.exists("Agustus 2025.xlsx"):
+        uploaded = "Agustus 2025.xlsx"
+    if mapfile is None and os.path.exists("nameactlim1.xlsx"):
+        mapfile = "nameactlim1.xlsx"
+
+    # load main data
     try:
         if source == "From Data Base":
             df_main = load_all_data("learningImpact1")
@@ -189,35 +196,13 @@ def variation_page():
         st.error(f"Gagal ambil/membaca data utama: {e}")
         return
 
-    # Quarter filter: allow user to select which financial quarter to analyze
-    # We will try to detect a date column in df_main and compute quarters (Q1..Q4)
-    quarter_choice = st.selectbox("Filter Quarter", ["All", "Q1", "Q2", "Q3", "Q4"], index=0)
-    date_col_candidates = ["date", "tanggal", "event_date", "start_date", "activity_date", "date_event"]
-    date_col = _find_col(df_main, date_col_candidates)
-    if date_col is None:
-        # no obvious date column found; inform user and keep full data
-        st.info("Kolom tanggal tidak ditemukan otomatis — menampilkan semua data. Jika ingin filter by quarter, pastikan tabel DB memiliki kolom tanggal (contoh: 'date' atau 'tanggal').")
-    else:
-        # attempt to parse the date column and compute quarter
-        try:
-            # coerce to datetime; errors -> NaT
-            df_main["__PARSED_DATE__"] = pd.to_datetime(df_main[date_col], errors="coerce")
-            # compute quarter number (1..4)
-            df_main["__QUARTER__"] = df_main["__PARSED_DATE__"].dt.quarter
-            if quarter_choice != "All":
-                qnum = int(quarter_choice.replace("Q", ""))
-                df_main = df_main[df_main["__QUARTER__"] == qnum].copy()
-                st.info(f"Menampilkan data untuk {quarter_choice} (berdasarkan kolom '{date_col}').")
-        except Exception:
-            st.info("Gagal memproses kolom tanggal untuk filter quarter; menampilkan semua data.")
-
-    # load mapping (name|activity) which is used to filter relevant rows
     mapping_df = _load_nameact_mapping(mapfile)
     if mapping_df is None or mapping_df.empty:
         st.error("Mapping LIM1 tidak valid atau kosong. Unggah file mapping atau gunakan built-in list.")
         return
 
-    # auto-detect useful columns in the uploaded/DB table (using flexible matching)
+    # detect columns in main table (col_nik detected but NOT displayed)
+    col_nik = _find_col(df_main, ["nik", "id"])
     col_name = _find_col(df_main, ["name", "expert", "nama"])
     col_course = _find_col(df_main, ["course_name", "course", "event", "course name"])
     col_variasi = _find_col(df_main, ["variasi", "variation"])
@@ -227,7 +212,7 @@ def variation_page():
         st.error("Kolom 'name' atau 'course_name/event' tidak ditemukan di data utama.")
         return
 
-    # normalize and prepare helper columns used downstream
+    # normalize
     df_main = df_main.rename(columns={c: c.strip() for c in df_main.columns})
     df_main["NAME_UP"] = df_main[col_name].astype(str).str.strip().str.upper()
     df_main["EVENT_NORM"] = df_main[col_course].apply(_norm_text)
@@ -236,7 +221,7 @@ def variation_page():
     # intentionally do NOT store NIK column for outputs
     # df_main["NIK"] = df_main[col_nik].astype(str).fillna("") if col_nik else ""
 
-    # prepare mapping sets used to filter rows: names and normalized activities
+    # mapping sets
     lim1_names = set(mapping_df["NAME_UP"].tolist())
     mapping_activities = [a for a in mapping_df["ACTIVITY_NORM"].tolist() if a]
 
@@ -248,13 +233,12 @@ def variation_page():
                 return True
         return False
 
-    # include rows where NAME is in the mapping list OR the event text contains any mapping activity
+    # include rows where name in list OR event matches any mapping activity
     df_filtered = df_main[df_main["NAME_UP"].isin(lim1_names) | df_main["EVENT_NORM"].apply(event_matches_any)].copy()
     if df_filtered.empty:
         st.warning("Tidak ada baris yang cocok berdasarkan nama OR event dari daftar mapping.")
         return
 
-    # show a small preview of the filtered dataset for verification
     st.subheader("Preview (filtered by mapping names OR mapping events)")
     preview_cols = [col_name, col_course]
     if col_sub:
@@ -264,7 +248,7 @@ def variation_page():
     # intentionally do NOT include NIK in preview
     st.dataframe(df_filtered[preview_cols].head(200))
 
-    # aggregate by (expert, event) to compute frequency and infer bobot (weight)
+    # aggregate by expert + event (count frequency) and compute bobot from 'variasi'
     rows = []
     grouped = df_filtered.groupby(["NAME_UP", "EVENT_NORM"], dropna=False)
     for (name_up, ev_norm), group in grouped:
@@ -274,7 +258,7 @@ def variation_page():
         activity_display = sample.get(col_course, "")
         sub_pen = sample.get("SUB_PENUGASAN", "")
 
-        # prefer explicit variasi values if provided (they may be numeric or descriptive)
+        # prefer variasi column values (first non-empty)
         variasi_vals = [str(x).strip() for x in group["VARIASI_TEXT"].tolist() if str(x).strip()]
         bobot = None
         if variasi_vals:
@@ -288,10 +272,9 @@ def variation_page():
             if bobot is None:
                 bobot = _assign_bobot_from_text(variasi_vals[0])
         else:
-            # fallback: infer bobot from sub-penugasan or activity text using keyword map
+            # fallback to sub_pen or activity_display inference
             bobot = _assign_bobot_from_text(sub_pen or activity_display or "")
 
-        # compute points = bobot * frequency (rounded to 2 decimals)
         point = round(bobot * freq, 2)
         rows.append({
             # NIK removed as requested
@@ -303,14 +286,12 @@ def variation_page():
             "POIN BOBOT": point
         })
 
-    # build a DataFrame from aggregated rows
     df_records = pd.DataFrame(rows)
     if df_records.empty:
         st.info("Tidak ditemukan record setelah agregasi.")
         return
     df_records.insert(0, "no", range(1, len(df_records) + 1))
 
-    # display detailed table (styled) for verification
     st.subheader("Detail Variasi Penugasan (filtered)")
     # remove orange header styling; keep minimal padding and number formatting
     styler = (df_records[["no", "NAME", "EVENT", "BOBOT LH", "FREKUENSI", "POIN BOBOT"]]
@@ -320,13 +301,22 @@ def variation_page():
               ]).format({"BOBOT LH": "{:.2f}", "POIN BOBOT": "{:.2f}"}))
     st.markdown(styler.to_html(), unsafe_allow_html=True)
 
-    # summary per expert (aggregate points and frequency per NAME)
+    # summary per expert (group by NAME only, NIK removed)
     summary = (df_records
                .groupby(["NAME"], as_index=False)
-               .agg(total_point=("POIN BOBOT", "sum"))
+               .agg(total_point=("POIN BOBOT", "sum"), total_freq=("FREKUENSI", "sum"))
                .sort_values("total_point", ascending=False))
     st.subheader("Ringkasan per Expert (Total Point)")
     st.dataframe(summary)
+
+    max_point = st.number_input("Total Point Tertinggi (untuk normalisasi skor)", value=25.0, step=1.0)
+    min_total_point = st.number_input("Minimal Total Point Expert (batas bawah)", value=1.0, step=0.1)
+
+    summary["total_point_clamped"] = summary["total_point"].apply(lambda v: max(v, float(min_total_point)))
+    summary["score_percent"] = (summary["total_point_clamped"] / float(max_point) * 100).clip(0, 100).round(2)
+
+    st.subheader("Skor Normalisasi (Top 20)")
+    st.dataframe(summary.head(20))
 
     # downloads (CSV won't include NIK)
     st.download_button("Download detail CSV", data=df_records.to_csv(index=False).encode("utf-8"), file_name="variation_detail.csv", mime="text/csv")
@@ -659,10 +649,19 @@ def variation_page():
     # summary per expert (group by NAME only, NIK removed)
     summary = (df_records
                .groupby(["NAME"], as_index=False)
-               .agg(total_point=("POIN BOBOT", "sum"))
+               .agg(total_point=("POIN BOBOT", "sum"), total_freq=("FREKUENSI", "sum"))
                .sort_values("total_point", ascending=False))
     st.subheader("Ringkasan per Expert (Total Point)")
     st.dataframe(summary)
+
+    max_point = st.number_input("Total Point Tertinggi (untuk normalisasi skor)", value=25.0, step=1.0)
+    min_total_point = st.number_input("Minimal Total Point Expert (batas bawah)", value=1.0, step=0.1)
+
+    summary["total_point_clamped"] = summary["total_point"].apply(lambda v: max(v, float(min_total_point)))
+    summary["score_percent"] = (summary["total_point_clamped"] / float(max_point) * 100).clip(0, 100).round(2)
+
+    st.subheader("Skor Normalisasi (Top 20)")
+    st.dataframe(summary.head(20))
 
     # downloads (CSV won't include NIK)
     st.download_button("Download detail CSV", data=df_records.to_csv(index=False).encode("utf-8"), file_name="variation_detail.csv", mime="text/csv")
