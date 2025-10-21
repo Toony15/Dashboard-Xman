@@ -51,7 +51,8 @@ def learning_hour_page():
         # Ambil data dari session_state
         combined_df = st.session_state.get("combined_df", pd.DataFrame())
     elif mode == "From Data Base":
-        viewTable="learningHour"
+        # viewTable="learningHour"
+        viewTable="learningHour_duplicate"
         combined_df = load_all_data(viewTable)
     if combined_df.empty:
         st.info("Tidak terdapat data")
