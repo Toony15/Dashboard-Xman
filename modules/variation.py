@@ -304,46 +304,16 @@ def variation_page():
     # summary per expert (group by NAME only, NIK removed)
     summary = (df_records
                .groupby(["NAME"], as_index=False)
-               .agg(total_point=("POIN BOBOT", "sum"), total_freq=("FREKUENSI", "sum"))
+               .agg(total_point=("POIN BOBOT", "sum"))
                .sort_values("total_point", ascending=False))
     st.subheader("Ringkasan per Expert (Total Point)")
     st.dataframe(summary)
 
-    max_point = st.number_input("Total Point Tertinggi (untuk normalisasi skor)", value=25.0, step=1.0)
-    min_total_point = st.number_input("Minimal Total Point Expert (batas bawah)", value=1.0, step=0.1)
-
-    summary["total_point_clamped"] = summary["total_point"].apply(lambda v: max(v, float(min_total_point)))
-    summary["score_percent"] = (summary["total_point_clamped"] / float(max_point) * 100).clip(0, 100).round(2)
-
-    st.subheader("Skor Normalisasi (Top 20)")
-    st.dataframe(summary.head(20))
 
     # downloads (CSV won't include NIK)
     st.download_button("Download detail CSV", data=df_records.to_csv(index=False).encode("utf-8"), file_name="variation_detail.csv", mime="text/csv")
     st.download_button("Download summary CSV", data=summary.to_csv(index=False).encode("utf-8"), file_name="variation_summary.csv", mime="text/csv")
 
-    # OpenAI analysis (best-effort)
-    try:
-        top3 = summary.head(3).to_dict(orient="records")
-        prompt = ("Buat ringkasan singkat (3 kalimat) dan insight tentang top 3 expert berdasarkan total_point. "
-                  f"Top3: {top3}")
-        resp = genai.responses.create(model="models/text-bison-001", input=prompt)
-        analysis = ""
-        if hasattr(resp, "output") and getattr(resp, "output"):
-            parts = []
-            for out in resp.output:
-                if hasattr(out, "content"):
-                    for c in out.content:
-                        parts.append(getattr(c, "text", str(c)))
-            analysis = " ".join(parts).strip()
-        else:
-            analysis = str(resp)
-        st.subheader("Analisis (OpenAI)")
-        st.write(analysis)
-    except Exception:
-        st.info("Analisis OpenAI tidak tersedia (cek konfigurasi genai).")
-# filepath: e:\CorpU\EXMAN\expert-calculator\modules\variation.py
-# ...existing code...
 import os
 import re
 import unicodedata
@@ -649,19 +619,10 @@ def variation_page():
     # summary per expert (group by NAME only, NIK removed)
     summary = (df_records
                .groupby(["NAME"], as_index=False)
-               .agg(total_point=("POIN BOBOT", "sum"), total_freq=("FREKUENSI", "sum"))
+               .agg(total_point=("POIN BOBOT", "sum"))
                .sort_values("total_point", ascending=False))
     st.subheader("Ringkasan per Expert (Total Point)")
     st.dataframe(summary)
-
-    max_point = st.number_input("Total Point Tertinggi (untuk normalisasi skor)", value=25.0, step=1.0)
-    min_total_point = st.number_input("Minimal Total Point Expert (batas bawah)", value=1.0, step=0.1)
-
-    summary["total_point_clamped"] = summary["total_point"].apply(lambda v: max(v, float(min_total_point)))
-    summary["score_percent"] = (summary["total_point_clamped"] / float(max_point) * 100).clip(0, 100).round(2)
-
-    st.subheader("Skor Normalisasi (Top 20)")
-    st.dataframe(summary.head(20))
 
     # downloads (CSV won't include NIK)
     st.download_button("Download detail CSV", data=df_records.to_csv(index=False).encode("utf-8"), file_name="variation_detail.csv", mime="text/csv")
