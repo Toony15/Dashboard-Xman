@@ -195,6 +195,34 @@ def variation_page():
     except Exception as e:
         st.error(f"Gagal ambil/membaca data utama: {e}")
         return
+    
+        # --- MULAI: snippet filter kuartal (tempel setelah df_main dimuat) ---
+    # Quarter filter UI and date column auto-detection
+    quarter_choice = st.selectbox("Filter Quarter", ["All", "Q1", "Q2", "Q3", "Q4"], index=0)
+
+    # Daftar nama kolom tanggal yang dicoba dicocokkan (tambahkan nama lain jika DB pakai nama lain)
+    date_col_candidates = ["date", "tanggal", "event_date", "start_date", "activity_date", "date_event"]
+
+    # Temukan kolom tanggal yang cocok (fungsi helper _find_col sudah ada di file)
+    date_col = _find_col(df_main, date_col_candidates)
+
+    if date_col is None:
+        st.info("Kolom tanggal tidak ditemukan otomatis — menampilkan semua data. "
+                "Jika ingin filter by quarter, pastikan tabel DB memiliki kolom tanggal (contoh: 'date' atau 'tanggal').")
+    else:
+        try:
+            # Parse ke datetime dan ekstrak kuartal
+            df_main["__PARSED_DATE__"] = pd.to_datetime(df_main[date_col], errors="coerce")
+            df_main["__QUARTER__"] = df_main["__PARSED_DATE__"].dt.quarter
+
+            # Jika pengguna memilih Q1..Q4, filter baris sesuai kuartal
+            if quarter_choice != "All":
+                qnum = int(quarter_choice.replace("Q", ""))
+                df_main = df_main[df_main["__QUARTER__"] == qnum].copy()
+                st.info(f"Menampilkan data untuk {quarter_choice} (berdasarkan kolom '{date_col}').")
+        except Exception:
+            st.info("Gagal memproses kolom tanggal untuk filter quarter; menampilkan semua data.")
+    # --- SELESAI: snippet filter kuartal ---
 
     mapping_df = _load_nameact_mapping(mapfile)
     if mapping_df is None or mapping_df.empty:
@@ -239,7 +267,28 @@ def variation_page():
         st.warning("Tidak ada baris yang cocok berdasarkan nama OR event dari daftar mapping.")
         return
 
-    st.subheader("Preview (filtered by mapping names OR mapping events)")
+        # --- Preview: per-table quarter filter (tempel di sini, sebelum menampilkan preview) ---
+    # Cari kolom quarter (bisa 'Quarter' dari DB atau '__QUARTER__' bila sebelumnya dibuat)
+    quarter_col = _find_col(df_filtered, ["quarter", "__QUARTER__", "Quarter"])
+
+    # Buat daftar pilihan quarter berdasarkan data (urutkan Q1..Q4 jika ada)
+    if quarter_col is not None:
+        available = list(dict.fromkeys(df_filtered[quarter_col].dropna().astype(str).tolist()))  # preserve order
+        order = ["Q1", "Q2", "Q3", "Q4"]
+        available_sorted = [q for q in order if q in available] + [q for q in available if q not in order]
+        preview_choices = ["All"] + available_sorted
+    else:
+        preview_choices = ["All"]
+
+    preview_q = st.selectbox("Filter Preview by Quarter", preview_choices, index=0, key="preview_quarter")
+
+    if preview_q == "All" or quarter_col is None:
+        df_filtered_preview = df_filtered.copy()
+    else:
+        df_filtered_preview = df_filtered[df_filtered[quarter_col].astype(str) == preview_q].copy()
+    # --- selesai preview ---
+    # lalu gunakan df_filtered_preview untuk menampilkan preview:
+    st.dataframe(df_filtered_preview[preview_cols].head(200))
     preview_cols = [col_name, col_course]
     if col_sub:
         preview_cols.append(col_sub)
@@ -510,6 +559,34 @@ def variation_page():
     except Exception as e:
         st.error(f"Gagal ambil/membaca data utama: {e}")
         return
+    
+        # --- MULAI: snippet filter kuartal (tempel setelah df_main dimuat) ---
+    # Quarter filter UI and date column auto-detection
+    quarter_choice = st.selectbox("Filter Quarter", ["All", "Q1", "Q2", "Q3", "Q4"], index=0)
+
+    # Daftar nama kolom tanggal yang dicoba dicocokkan (tambahkan nama lain jika DB pakai nama lain)
+    date_col_candidates = ["date", "tanggal", "event_date", "start_date", "activity_date", "date_event"]
+
+    # Temukan kolom tanggal yang cocok (fungsi helper _find_col sudah ada di file)
+    date_col = _find_col(df_main, date_col_candidates)
+
+    if date_col is None:
+        st.info("Kolom tanggal tidak ditemukan otomatis — menampilkan semua data. "
+                "Jika ingin filter by quarter, pastikan tabel DB memiliki kolom tanggal (contoh: 'date' atau 'tanggal').")
+    else:
+        try:
+            # Parse ke datetime dan ekstrak kuartal
+            df_main["__PARSED_DATE__"] = pd.to_datetime(df_main[date_col], errors="coerce")
+            df_main["__QUARTER__"] = df_main["__PARSED_DATE__"].dt.quarter
+
+            # Jika pengguna memilih Q1..Q4, filter baris sesuai kuartal
+            if quarter_choice != "All":
+                qnum = int(quarter_choice.replace("Q", ""))
+                df_main = df_main[df_main["__QUARTER__"] == qnum].copy()
+                st.info(f"Menampilkan data untuk {quarter_choice} (berdasarkan kolom '{date_col}').")
+        except Exception:
+            st.info("Gagal memproses kolom tanggal untuk filter quarter; menampilkan semua data.")
+    # --- SELESAI: snippet filter kuartal ---
 
     mapping_df = _load_nameact_mapping(mapfile)
     if mapping_df is None or mapping_df.empty:
