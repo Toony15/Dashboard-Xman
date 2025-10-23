@@ -52,7 +52,7 @@ def learning_hour_page():
         combined_df = st.session_state.get("combined_df", pd.DataFrame())
     elif mode == "From Data Base":
         # viewTable="learningHour"
-        viewTable="learningHour_duplicate"
+        viewTable="learningHour_new"
         combined_df = load_all_data(viewTable)
     if combined_df.empty:
         st.info("Tidak terdapat data")
@@ -90,7 +90,7 @@ def learning_hour_page():
 
     quarter=["Q1", "Q2", "Q3", "Q4"]
     quarter = st.pills("Pilih Quarter", quarter, selection_mode="single", default="Q1")
-    combined_df = combined_df[combined_df["Quarter"]==quarter]
+    combined_df = combined_df[combined_df["quarter"]==quarter]
 
     # Mapping bobot berdasarkan kolom Variasi
     bobot_map = {
@@ -103,27 +103,36 @@ def learning_hour_page():
     }
 
     # 1️⃣ Tambahkan kolom bobot berdasarkan Variasi
-    combined_df["bobot"] = combined_df["Variasi"].map(bobot_map)
+    combined_df["bobot"] = combined_df["variasi"].map(bobot_map)
 
     # 2️⃣ Hitung kolom poin_lh
-    combined_df["poin_lh"] = combined_df["LH"] * combined_df["bobot"]
+    combined_df["poin_lh"] = combined_df["learningHour"] * combined_df["bobot"]
 
     # 3️⃣ Hitung total poin tertinggi antar expert
-    total_poin_per_expert = combined_df.groupby("Expert")["poin_lh"].sum().reset_index(name="total_poin")
+    total_poin_per_expert = combined_df.groupby("expert")["poin_lh"].sum().reset_index(name="total_poin")
     poin_tertinggi = total_poin_per_expert["total_poin"].max()
 
     # 4️⃣ Merge kembali ke combined_df
-    combined_df = combined_df.merge(total_poin_per_expert, on="Expert", how="left")
+    combined_df = combined_df.merge(total_poin_per_expert, on="expert", how="left")
 
     # 5️⃣ Hitung skor normalisasi
     combined_df["skor"] = (combined_df["total_poin"] / poin_tertinggi) * 100
+    a, b, c = st.columns(3)
+    
+    totalLH = combined_df["learningHour"].sum()
+    countExpert = combined_df["expert"].nunique()
+    avgLH = round(totalLH/countExpert,2)
+
+    a.metric("Total Learning Hour", totalLH, "", border=True)
+    b.metric("Average Learning Hour", avgLH, "", border=True)
+    c.metric("Total Expert", countExpert, "", border=True)
 
     # 6️⃣ Tampilkan hasil
-    st.dataframe(combined_df[["Expert", "Event", "Variasi", "LH", "bobot", "poin_lh", "total_poin", "skor"]])
+    st.dataframe(combined_df[["expert", "event", "variasi", "learningHour", "bobot", "poin_lh", "total_poin", "skor"]])
     
     # === 🔹 Buat DataFrame Rekap per Expert ===
     rekap_expert = (
-        combined_df.groupby("Expert", as_index=False)
+        combined_df.groupby("expert", as_index=False)
         .agg({"poin_lh": "sum"})
         .rename(columns={"poin_lh": "total_poin"})
     )

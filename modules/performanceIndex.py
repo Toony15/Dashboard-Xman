@@ -51,7 +51,7 @@ def performanceIndexPage():
         # Ambil data dari session_state
         combined_df = st.session_state.get("combined_df", pd.DataFrame())
     elif mode == "From Data Base":
-        viewTable="learningHour_duplicate"
+        viewTable="learningHour_new"
         combined_df = load_all_data(viewTable)
     if combined_df.empty:
         st.info("Tidak terdapat data")
