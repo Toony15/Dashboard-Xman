@@ -6,7 +6,7 @@ from google import genai
 from dataManager import load_all_data
 
 def newVariationPage():
-    upabase = get_db_connection()
+    supabase = get_db_connection()
     def read_and_merge(files):
         all_data = []
         for uploaded_file in files:
@@ -51,7 +51,7 @@ def newVariationPage():
         # Ambil data dari session_state
         combined_df = st.session_state.get("combined_df", pd.DataFrame())
     elif mode == "From Data Base":
-        viewTable="learningHour"
+        viewTable="learningHour_new"
         combined_df = load_all_data(viewTable)
     if combined_df.empty:
         st.info("Tidak terdapat data")
@@ -73,6 +73,42 @@ def newVariationPage():
     st.empty
 
     # === Pilih Quarter terkini ===
-    quarters = sorted(combined_df["Quarter"].dropna().unique())
-    selected_quarter = st.selectbox("📆 Pilih Quarter (sebagai LH terkini):", quarters)
+    quarter=["Q1", "Q2", "Q3", "Q4"]
+    quarter = st.pills("Pilih Quarter", quarter, selection_mode="single", default="Q1")
+    combined_df = combined_df[combined_df["quarter"]==quarter]
     
+    # Daftar variasi yang ingin direkap
+    target_variations = [
+        "Coaching (Coach)/Mentoring (Mentor)",
+        "Expert Insight (Pembicara)",
+        "Teaching",
+        "Learning Content Designer/Developer",
+        "Penguji/Assessor"
+    ]
+
+    # Hitung jumlah kemunculan setiap variasi untuk masing-masing expert
+    rekap_df = (
+        combined_df[combined_df["variasi"].isin(target_variations)]
+        .groupby(["expert", "variasi"])
+        .size()
+        .unstack(fill_value=0)
+        .reset_index()
+    )
+
+    # Pastikan semua kolom variasi ada (jika ada yang tidak muncul di data)
+    for var in target_variations:
+        if var not in rekap_df.columns:
+            rekap_df[var] = 0
+
+    # Tambahkan kolom id urut dimulai dari 1
+    rekap_df.insert(0, "id", range(1, len(rekap_df) + 1))
+
+    # Urutkan kolom sesuai format yang diminta
+    rekap_df = rekap_df[
+        ["id", "expert"]
+        + target_variations
+    ]
+
+    # === tampilkan hasil (misal di Streamlit atau print) ===
+    st.dataframe(rekap_df, use_container_width=True)
+    # atau jika di Jupyter: display(rekap_df)
