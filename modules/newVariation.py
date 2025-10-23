@@ -109,6 +109,26 @@ def newVariationPage():
         + target_variations
     ]
 
-    # === tampilkan hasil (misal di Streamlit atau print) ===
+
+    # Mapping bobot sesuai variasi
+    bobot_map = {
+        "Coaching (Coach)/Mentoring (Mentor)": 1.5,
+        "Expert Insight (Pembicara)": 1.3,
+        "Teaching": 1.4,
+        "Learning Content Designer/Developer": 1.5,
+        "Publikasi Artikel/Video/Podcast": 1.1,
+        "Penguji/Assessor": 1.2
+    }
+
+    # Hitung total poin berdasarkan jumlah × bobot
+    rekap_df["total_poin"] = sum(
+        rekap_df[col] * bobot_map.get(col, 0)
+        for col in target_variations
+    )
+
+    # Hitung skor normalisasi (poin_aktual / poin_tertinggi * 100)
+    max_poin = rekap_df["total_poin"].max()
+    rekap_df["skor_normalisasi"] = (rekap_df["total_poin"] / max_poin * 100).round(2)
+
+    # Tampilkan hasil
     st.dataframe(rekap_df, use_container_width=True)
-    # atau jika di Jupyter: display(rekap_df)
