@@ -132,3 +132,5 @@ def newVariationPage():
 
     # Tampilkan hasil
     st.dataframe(rekap_df, use_container_width=True)
+    
+    

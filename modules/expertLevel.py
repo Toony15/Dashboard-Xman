@@ -64,6 +64,40 @@ def expertLevel():
     # Hapus kolom 'nama' (jika tidak diperlukan lagi)
     main_df.drop(columns=["nama"], inplace=True)
     main_df.drop(columns=["id"], inplace=True)
+    main_df["poin"] = main_df["profLevel"] * main_df["expert_level"]
+    total_poin_per_expert = main_df.groupby("expert")["poin"].sum().reset_index(name="total_poin")
+    poin_tertinggi = total_poin_per_expert["total_poin"].max()
 
+    # Merge kembali ke combined_df
+    main_df = main_df.merge(total_poin_per_expert, on="expert", how="left")
+    
     # Tampilkan hasil
     st.dataframe(main_df)
+    
+    # rekap_expert = (
+    #     main_df.groupby("expert", as_index=False)
+    #     .agg({"poin": "sum"})
+    #     .rename(columns={"poin_lh": "total_poin"})
+    # )
+
+    # # Hitung total poin tertinggi
+    # poin_tertinggi = rekap_expert["total_poin"].max()
+
+    # # Hitung skor normalisasi (seperti di formula)
+    # rekap_expert["skor"] = (rekap_expert["total_poin"] / poin_tertinggi) * 100
+
+    # # Urutkan dari skor tertinggi ke terendah
+    # rekap_expert = rekap_expert.sort_values(by="skor", ascending=False).reset_index(drop=True)
+
+    rekap = (
+        main_df.groupby("expert", as_index=False)["poin"]
+        .sum()
+        .sort_values(by="poin", ascending=False)
+    )
+    rekap = rekap.rename(columns={
+      "poin" : "poin_expert"   
+    }
+    )
+    rekap["skor"] = round((rekap["poin_expert"] / poin_tertinggi) * 100,2)
+    st.subheader("Rekap perhitungan Expert Level")
+    st.dataframe(rekap)
