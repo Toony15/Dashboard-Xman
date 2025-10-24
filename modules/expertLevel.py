@@ -5,5 +5,5 @@ from dbConfig import get_db_connection
 from google import genai
 from dataManager import load_all_data
 
-def consistencyIndexPage():
+def expertLevel():
     st.write("Consistensy index page")
