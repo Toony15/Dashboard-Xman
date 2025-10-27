@@ -4,6 +4,8 @@ import io
 from dbConfig import get_db_connection
 from google import genai
 from dataManager import load_all_data
+import locale
+locale.setlocale(locale.LC_ALL, 'id_ID.UTF-8')
 
 def compensation_page():
     st.title("Compensation")
@@ -72,10 +74,12 @@ def compensation_page():
 
     st.header("Nominal Kompensasi")
     nominal = st.number_input(
-            "Level Expert", value=None, placeholder="Type a number...", key="input_param4"
-        )
-    
+        "Nominal Kompensasi (Rp)", value=None, placeholder="Masukkan nilai kompensasi...", key="input_param4"
+    )
+
     st.header("Hasil Perhitungan")
+
+    # --- 💡 Hitung skor per baris ---
     combined_df["skor"] = (
         combined_df["learning_hour"] * (paramLh / 100)
         + combined_df["variation"] * (paramVariasi / 100)
@@ -89,13 +93,22 @@ def compensation_page():
     else:
         combined_df["kompensasi"] = 0
 
+    # --- 💵 Format nilai Rupiah ---
+    def format_rupiah(x):
+        return f"Rp {x:,.0f}".replace(",", ".")
+
+    # Format kolom nominal dan kompensasi
+    formatted_df = combined_df.copy()
+    formatted_df["kompensasi (Rp)"] = formatted_df["kompensasi"].apply(format_rupiah)
+
     # --- 🧾 Tampilkan hasil ---
     st.dataframe(
-        combined_df[["expert", "learning_hour", "variation", "expert_level", "skor", "kompensasi"]],
+        formatted_df[["expert", "learning_hour", "variation", "expert_level", "skor", "kompensasi (Rp)"]],
         use_container_width=True
     )
 
     # Ringkasan hasil
-    st.success(f"✅ Total {len(combined_df)} baris data dihitung untuk {quarter}")
-    
-    
+    if nominal:
+        st.success(f"✅ Total {len(combined_df)} baris data dihitung untuk {quarter} dengan total kompensasi {format_rupiah(nominal)}")
+    else:
+        st.info(f"ℹ️ Total {len(combined_df)} baris data dihitung untuk {quarter}, belum ada nominal kompensasi yang dimasukkan.")
