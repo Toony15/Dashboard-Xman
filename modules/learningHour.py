@@ -149,6 +149,40 @@ def learning_hour_page():
     # === 🔹 Tampilkan hasil rekap ===
     st.subheader("📋 Rekap Total Poin & Skor per Expert")
     st.dataframe(rekap_expert, use_container_width=True)
+    if st.button("💾 Simpan ke Database"):
+        try:
+            # Pastikan kolom yang dibutuhkan ada
+            required_cols = ["expert", "skor"]
+            missing_cols = [col for col in required_cols if col not in rekap_expert.columns]
+            if missing_cols:
+                st.error(f"Kolom berikut tidak ditemukan di dataframe: {missing_cols}")
+            else:
+                # Ambil kolom yang diperlukan
+                upload_df = rekap_expert[required_cols].copy()
+
+                # Tambahkan kolom quarter dari input user
+                upload_df["quarter"] = quarter
+
+                # Mapping nama kolom df ke kolom di tabel Supabase
+                column_mapping = {
+                    "expert": "expert",   # kolom df → kolom Supabase
+                    "skor": "learning_hour",
+                    "quarter": "quarter"
+                }
+                upload_df.rename(columns=column_mapping, inplace=True)
+
+                # Convert ke list of dict
+                data_records = upload_df.to_dict(orient="records")
+
+                # Simpan ke tabel "calculated"
+                response = supabase.table("calculated").insert(data_records).execute()
+
+                if hasattr(response, "data") and response.data:
+                    st.success(f"✅ {len(data_records)} data berhasil disimpan ke tabel 'calculated' untuk {quarter}")
+                else:
+                    st.warning("⚠️ Tidak ada data yang disimpan atau respons kosong dari Supabase.")
+        except Exception as e:
+            st.error(f"❌ Gagal menyimpan ke database: {e}")
 
 
         
