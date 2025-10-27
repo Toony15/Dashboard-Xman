@@ -5,6 +5,8 @@ from dbConfig import get_db_connection
 from google import genai
 from dataManager import load_all_data
 
+supabase = get_db_connection()
+
 def expertLevel():
     st.title("Expert Level")  
     options = ["Upload file","From Data Base"]
@@ -101,3 +103,64 @@ def expertLevel():
     rekap["skor"] = round((rekap["poin_expert"] / poin_tertinggi) * 100,2)
     st.subheader("Rekap perhitungan Expert Level")
     st.dataframe(rekap)
+    
+    if st.button("💾 Simpan ke Database"):
+        try:
+            # Pastikan kolom yang dibutuhkan ada
+            required_cols = ["expert", "skor"]
+            missing_cols = [col for col in required_cols if col not in rekap.columns]
+            if missing_cols:
+                st.error(f"Kolom berikut tidak ditemukan di dataframe: {missing_cols}")
+            else:
+                # Ambil kolom yang diperlukan
+                upload_df = rekap[required_cols].copy()
+
+                # Tambahkan kolom quarter dari input user
+                upload_df["quarter"] = quarter
+
+                # Mapping kolom dari DataFrame ke tabel Supabase
+                column_mapping = {
+                    "expert": "expert",       # kolom df → kolom Supabase
+                    "skor": "expert_level",      # kolom df → kolom Supabase
+                    "quarter": "quarter"
+                }
+                upload_df.rename(columns=column_mapping, inplace=True)
+
+                # Ubah ke list of dict
+                data_records = upload_df.to_dict(orient="records")
+
+                updated_count = 0
+                inserted_count = 0
+
+                # Loop per baris agar bisa cek apakah data sudah ada
+                for row in data_records:
+                    expert_name = row["expert"]
+                    quarter_value = row["quarter"]
+                    expert_value = row["expert_level"]
+
+                    # Cek apakah kombinasi expert + quarter sudah ada di tabel
+                    existing = (
+                        supabase.table("calculated")
+                        .select("id")
+                        .eq("expert", expert_name)
+                        .eq("quarter", quarter_value)
+                        .execute()
+                    )
+
+                    if existing.data:
+                        # Jika sudah ada → update kolom variation
+                        supabase.table("calculated").update({"expert_level": expert_value}).eq(
+                            "expert", expert_name
+                        ).eq("quarter", quarter_value).execute()
+                        updated_count += 1
+                    else:
+                        # Jika belum ada → insert data baru
+                        supabase.table("calculated").insert(row).execute()
+                        inserted_count += 1
+
+                st.success(
+                    f"✅ {inserted_count} data baru disimpan dan {updated_count} data diperbarui di tabel 'calculated' untuk {quarter}"
+                )
+
+        except Exception as e:
+            st.error(f"❌ Gagal menyimpan ke database: {e}")

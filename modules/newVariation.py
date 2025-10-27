@@ -128,9 +128,68 @@ def newVariationPage():
 
     # Hitung skor normalisasi (poin_aktual / poin_tertinggi * 100)
     max_poin = rekap_df["total_poin"].max()
-    rekap_df["skor_normalisasi"] = (rekap_df["total_poin"] / max_poin * 100).round(2)
+    rekap_df["skor"] = (rekap_df["total_poin"] / max_poin * 100).round(2)
 
     # Tampilkan hasil
     st.dataframe(rekap_df, use_container_width=True)
     
-    
+    if st.button("💾 Simpan ke Database"):
+        try:
+            # Pastikan kolom yang dibutuhkan ada
+            required_cols = ["expert", "skor"]
+            missing_cols = [col for col in required_cols if col not in rekap_df.columns]
+            if missing_cols:
+                st.error(f"Kolom berikut tidak ditemukan di dataframe: {missing_cols}")
+            else:
+                # Ambil kolom yang diperlukan
+                upload_df = rekap_df[required_cols].copy()
+
+                # Tambahkan kolom quarter dari input user
+                upload_df["quarter"] = quarter
+
+                # Mapping kolom dari DataFrame ke tabel Supabase
+                column_mapping = {
+                    "expert": "expert",       # kolom df → kolom Supabase
+                    "skor": "variation",      # kolom df → kolom Supabase
+                    "quarter": "quarter"
+                }
+                upload_df.rename(columns=column_mapping, inplace=True)
+
+                # Ubah ke list of dict
+                data_records = upload_df.to_dict(orient="records")
+
+                updated_count = 0
+                inserted_count = 0
+
+                # Loop per baris agar bisa cek apakah data sudah ada
+                for row in data_records:
+                    expert_name = row["expert"]
+                    quarter_value = row["quarter"]
+                    variation_value = row["variation"]
+
+                    # Cek apakah kombinasi expert + quarter sudah ada di tabel
+                    existing = (
+                        supabase.table("calculated")
+                        .select("id")
+                        .eq("expert", expert_name)
+                        .eq("quarter", quarter_value)
+                        .execute()
+                    )
+
+                    if existing.data:
+                        # Jika sudah ada → update kolom variation
+                        supabase.table("calculated").update({"variation": variation_value}).eq(
+                            "expert", expert_name
+                        ).eq("quarter", quarter_value).execute()
+                        updated_count += 1
+                    else:
+                        # Jika belum ada → insert data baru
+                        supabase.table("calculated").insert(row).execute()
+                        inserted_count += 1
+
+                st.success(
+                    f"✅ {inserted_count} data baru disimpan dan {updated_count} data diperbarui di tabel 'calculated' untuk {quarter}"
+                )
+
+        except Exception as e:
+            st.error(f"❌ Gagal menyimpan ke database: {e}")
