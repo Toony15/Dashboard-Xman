@@ -105,14 +105,14 @@ def compensation_page():
     formatted_df = combined_df.copy()
     formatted_df["kompensasi (Rp)"] = formatted_df["kompensasi"].apply(format_rupiah)
 
-    # --- 🧾 Tampilkan hasil ---
-    st.dataframe(
-        formatted_df[["expert", "learning_hour", "variation", "expert_level", "skor", "kompensasi (Rp)"]],
-        use_container_width=True
-    )
-
     # Ringkasan hasil
     if nominal:
         st.success(f"✅ Total {len(combined_df)} baris data dihitung untuk {quarter} dengan total kompensasi {format_rupiah(nominal)}")
     else:
         st.info(f"ℹ️ Total {len(combined_df)} baris data dihitung untuk {quarter}, belum ada nominal kompensasi yang dimasukkan.")
+    
+    # --- 🧾 Tampilkan hasil ---
+    st.dataframe(
+        formatted_df[["expert", "learning_hour", "variation", "expert_level", "skor", "kompensasi (Rp)"]],
+        use_container_width=True
+    )
