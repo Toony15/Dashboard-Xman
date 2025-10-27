@@ -5,7 +5,11 @@ from dbConfig import get_db_connection
 from google import genai
 from dataManager import load_all_data
 import locale
-locale.setlocale(locale.LC_ALL, 'id_ID.UTF-8')
+
+try:
+    locale.setlocale(locale.LC_ALL, 'id_ID.UTF-8')
+except locale.Error:
+    locale.setlocale(locale.LC_ALL, '') 
 
 def compensation_page():
     st.title("Compensation")
