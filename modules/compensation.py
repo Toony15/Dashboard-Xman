@@ -62,19 +62,19 @@ def compensation_page():
         paramLh = st.number_input(
             "Kontribusi Learning Hour", value=60, placeholder="Type a number...", key="input_param1"
         )
-        st.write("The current number is ", 60)
+        st.write("The default number is ", 60)
 
     with param2:
         paramVariasi = st.number_input(
             "Variasi Penugasan", value=20, placeholder="Type a number...", key="input_param2"
         )
-        st.write("The current number is ", 20)
+        st.write("The default number is ", 20)
 
     with param3:
         paramExpert = st.number_input(
             "Level Expert", value=20, placeholder="Type a number...", key="input_param3"
         )
-        st.write("The current number is ", 20)
+        st.write("The default number is ", 20)
 
     st.header("Nominal Kompensasi")
     nominal = st.number_input(
