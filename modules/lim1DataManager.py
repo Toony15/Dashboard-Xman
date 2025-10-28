@@ -1,7 +1,7 @@
 import streamlit as st
 
-def uploadLim1(combined_df, DestinationTable, supabase):
-            if st.button("Upload ke Database"):
+def uploadLim1(combined_df, DestinationTable, supabase, upload):
+            if upload == True:
                 try:
                     df = combined_df[["id","Email","Event","Question","Answer","Expert","Unit","Quarter"]]
 

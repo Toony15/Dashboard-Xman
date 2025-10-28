@@ -254,9 +254,10 @@ def show_data_manager():
             # Ambil data dari session_state
             combined_df = st.session_state.get("combined_df", pd.DataFrame())
             st.dataframe(combined_df)
-            if uploaded_file and st.button("Upload ke Database"):
+            if uploaded_file and st.button("Upload ke Database", key="upload_Lim1"):
                 try:
-                    uploadLim1(combined_df, DestinationTable, supabase)
+                    upload = True
+                    uploadLim1(combined_df, DestinationTable, supabase, upload)
                 except Exception as e:
                     st.error(f"❌ Gagal upload: {e}")
         elif tableName == "Learning Hours":
