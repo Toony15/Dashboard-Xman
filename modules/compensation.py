@@ -113,6 +113,6 @@ def compensation_page():
     
     # --- 🧾 Tampilkan hasil ---
     st.dataframe(
-        formatted_df[["expert", "learning_hour", "variation", "expert_level", "skor", "kompensasi (Rp)"]],
+        formatted_df[["nik", "expert", "learning_hour", "variation", "expert_level", "skor", "kompensasi (Rp)"]],
         use_container_width=True
     )
