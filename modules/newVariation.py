@@ -89,7 +89,7 @@ def newVariationPage():
     # Hitung jumlah kemunculan setiap variasi untuk masing-masing expert
     rekap_df = (
         combined_df[combined_df["variasi"].isin(target_variations)]
-        .groupby(["expert", "variasi"])
+        .groupby(["nik","expert", "variasi"])
         .size()
         .unstack(fill_value=0)
         .reset_index()
@@ -105,7 +105,7 @@ def newVariationPage():
 
     # Urutkan kolom sesuai format yang diminta
     rekap_df = rekap_df[
-        ["id", "expert"]
+        ["nik", "expert"]
         + target_variations
     ]
 
@@ -129,6 +129,7 @@ def newVariationPage():
     # Hitung skor normalisasi (poin_aktual / poin_tertinggi * 100)
     max_poin = rekap_df["total_poin"].max()
     rekap_df["skor"] = (rekap_df["total_poin"] / max_poin * 100).round(2)
+    rekap_df["nik"] = rekap_df["nik"].apply(lambda x: int(x) if pd.notnull(x) else None)
 
     # Tampilkan hasil
     st.dataframe(rekap_df, use_container_width=True)
@@ -136,7 +137,7 @@ def newVariationPage():
     if st.button("💾 Simpan ke Database"):
         try:
             # Pastikan kolom yang dibutuhkan ada
-            required_cols = ["expert", "skor"]
+            required_cols = ["nik","expert", "skor"]
             missing_cols = [col for col in required_cols if col not in rekap_df.columns]
             if missing_cols:
                 st.error(f"Kolom berikut tidak ditemukan di dataframe: {missing_cols}")
@@ -149,6 +150,7 @@ def newVariationPage():
 
                 # Mapping kolom dari DataFrame ke tabel Supabase
                 column_mapping = {
+                    "nik" : "nik",
                     "expert": "expert",       # kolom df → kolom Supabase
                     "skor": "variation",      # kolom df → kolom Supabase
                     "quarter": "quarter"
@@ -163,7 +165,7 @@ def newVariationPage():
 
                 # Loop per baris agar bisa cek apakah data sudah ada
                 for row in data_records:
-                    expert_name = row["expert"]
+                    expert_nik = row["nik"]
                     quarter_value = row["quarter"]
                     variation_value = row["variation"]
 
@@ -171,7 +173,7 @@ def newVariationPage():
                     existing = (
                         supabase.table("calculated")
                         .select("id")
-                        .eq("expert", expert_name)
+                        .eq("nik", expert_nik)
                         .eq("quarter", quarter_value)
                         .execute()
                     )
@@ -179,12 +181,12 @@ def newVariationPage():
                     if existing.data:
                         # Jika sudah ada → update kolom variation
                         supabase.table("calculated").update({"variation": variation_value}).eq(
-                            "expert", expert_name
+                            "nik", expert_nik
                         ).eq("quarter", quarter_value).execute()
                         updated_count += 1
                     else:
-                        # Jika belum ada → insert data baru
-                        supabase.table("calculated").insert(row).execute()
+                        # # Jika belum ada → insert data baru
+                        # supabase.table("calculated").insert(row).execute()
                         inserted_count += 1
 
                 st.success(

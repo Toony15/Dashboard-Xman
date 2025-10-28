@@ -49,9 +49,9 @@ def expertLevel():
     # === Pilih Quarter terkini ===
     quarter=["Q1", "Q2", "Q3", "Q4"]
     quarter = st.pills("Pilih Quarter", quarter, selection_mode="single", default="Q1")
-    expert_df = load_all_data("expertLevel")
+    expert_df = load_all_data("expert_level")
     combined_df = combined_df[combined_df["quarter"]==quarter]
-    main_df = combined_df[["expert", "company", "event", "variasi", "profLevel"]]
+    main_df = combined_df[["nik","expert", "company", "event", "variasi", "profLevel"]]
     
     main_df = main_df.merge(
         expert_df,
@@ -92,7 +92,7 @@ def expertLevel():
     # rekap_expert = rekap_expert.sort_values(by="skor", ascending=False).reset_index(drop=True)
 
     rekap = (
-        main_df.groupby("expert", as_index=False)["poin"]
+        main_df.groupby(["nik","expert"], as_index=False)["poin"]
         .sum()
         .sort_values(by="poin", ascending=False)
     )
@@ -104,10 +104,12 @@ def expertLevel():
     st.subheader("Rekap perhitungan Expert Level")
     st.dataframe(rekap)
     
+    rekap["nik"] = rekap["nik"].apply(lambda x: int(x) if pd.notnull(x) else None)
+    
     if st.button("💾 Simpan ke Database"):
         try:
             # Pastikan kolom yang dibutuhkan ada
-            required_cols = ["expert", "skor"]
+            required_cols = ["nik","expert", "skor"]
             missing_cols = [col for col in required_cols if col not in rekap.columns]
             if missing_cols:
                 st.error(f"Kolom berikut tidak ditemukan di dataframe: {missing_cols}")
@@ -120,6 +122,7 @@ def expertLevel():
 
                 # Mapping kolom dari DataFrame ke tabel Supabase
                 column_mapping = {
+                    "nik" : "nik",
                     "expert": "expert",       # kolom df → kolom Supabase
                     "skor": "expert_level",      # kolom df → kolom Supabase
                     "quarter": "quarter"
@@ -134,7 +137,7 @@ def expertLevel():
 
                 # Loop per baris agar bisa cek apakah data sudah ada
                 for row in data_records:
-                    expert_name = row["expert"]
+                    expert_nik = row["nik"]
                     quarter_value = row["quarter"]
                     expert_value = row["expert_level"]
 
@@ -142,7 +145,7 @@ def expertLevel():
                     existing = (
                         supabase.table("calculated")
                         .select("id")
-                        .eq("expert", expert_name)
+                        .eq("nik", expert_nik)
                         .eq("quarter", quarter_value)
                         .execute()
                     )
@@ -150,12 +153,12 @@ def expertLevel():
                     if existing.data:
                         # Jika sudah ada → update kolom variation
                         supabase.table("calculated").update({"expert_level": expert_value}).eq(
-                            "expert", expert_name
+                            "nik", expert_nik
                         ).eq("quarter", quarter_value).execute()
                         updated_count += 1
                     else:
                         # Jika belum ada → insert data baru
-                        supabase.table("calculated").insert(row).execute()
+                        # supabase.table("calculated").insert(row).execute()
                         inserted_count += 1
 
                 st.success(

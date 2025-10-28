@@ -128,12 +128,12 @@ def learning_hour_page():
     c.metric("Total Expert", countExpert, "", border=True)
 
     # 6️⃣ Tampilkan hasil
-    st.dataframe(combined_df[["expert", "event", "variasi", "learningHour", "bobot", "poin_lh", "total_poin", "skor"]])
+    st.dataframe(combined_df[["nik","expert", "event", "variasi", "learningHour", "bobot", "poin_lh", "total_poin", "skor"]])
     
     # === 🔹 Buat DataFrame Rekap per Expert ===
     rekap_expert = (
-        combined_df.groupby("expert", as_index=False)
-        .agg({"poin_lh": "sum"})
+        combined_df.groupby(["nik","expert"], as_index=False)
+        .agg({"poin_lh": "sum", "learningHour":"sum"})
         .rename(columns={"poin_lh": "total_poin"})
     )
 
@@ -142,6 +142,8 @@ def learning_hour_page():
 
     # Hitung skor normalisasi (seperti di formula)
     rekap_expert["skor"] = (rekap_expert["total_poin"] / poin_tertinggi) * 100
+    rekap_expert = rekap_expert[rekap_expert["learningHour"]>=12].copy()
+    rekap_expert["nik"] = rekap_expert["nik"].apply(lambda x: int(x) if pd.notnull(x) else None)
 
     # Urutkan dari skor tertinggi ke terendah
     rekap_expert = rekap_expert.sort_values(by="skor", ascending=False).reset_index(drop=True)
@@ -152,7 +154,7 @@ def learning_hour_page():
     if st.button("💾 Simpan ke Database"):
         try:
             # Pastikan kolom yang dibutuhkan ada
-            required_cols = ["expert", "skor"]
+            required_cols = ["expert", "skor", "nik"]
             missing_cols = [col for col in required_cols if col not in rekap_expert.columns]
             if missing_cols:
                 st.error(f"Kolom berikut tidak ditemukan di dataframe: {missing_cols}")
@@ -165,6 +167,7 @@ def learning_hour_page():
 
                 # Mapping nama kolom df ke kolom di tabel Supabase
                 column_mapping = {
+                    "nik":"nik",
                     "expert": "expert",   # kolom df → kolom Supabase
                     "skor": "learning_hour",
                     "quarter": "quarter"
