@@ -325,7 +325,7 @@ def satisfaction_page():
                 
                 
                 # --- Table 4: Rekap Pertanyaan Deskriptif per Event ---
-                st.subheader("Table 4: Rekap Pertanyaan Deskriptif per Event")
+                # st.subheader("Table 4: Rekap Pertanyaan Deskriptif per Event")
 
                 text_df = resume_df[~resume_df["is_numeric"]].copy()
                 if not text_df.empty:
@@ -341,7 +341,7 @@ def satisfaction_page():
                     # Simpan seluruh isi kolom NILAI PERTANYAAN ke variabel Python
                     nilai_pertanyaan_list = table3["NILAI PERTANYAAN"].tolist()
 
-                    st.dataframe(table3, use_container_width=True)
+                    # st.dataframe(table3, use_container_width=True)
 
                     # Debug info (bisa dihapus nanti)
                     st.write("📦 Jumlah Nilai Pertanyaan yang Disimpan:", len(nilai_pertanyaan_list))
