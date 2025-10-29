@@ -312,7 +312,7 @@ def satisfaction_page():
 
 
                 # Opsional: bulatkan dua angka di belakang koma
-                avg_score_per_expert["Average_Score"] = avg_score_per_expert["Average_Score"].round(2)
+                avg_score_per_expert["Average_Score"] = avg_score_per_expert["Average_Score"].round(3) * 10
 
                 # Tampilkan hasil
                 st.dataframe(avg_score_per_expert)
