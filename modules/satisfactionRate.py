@@ -38,7 +38,7 @@ def satisfaction_page():
     options = ["Upload file","From Data Base"]
     mode = st.pills("Data Resource", options, selection_mode="single", default="Upload file")
     if mode == "Upload file":   
-        st.header("📊 Upload File")
+        st.header("Upload File")
 
         uploaded_files = st.file_uploader(
             "Upload data (format Excel)", 
@@ -77,8 +77,7 @@ def satisfaction_page():
             """, unsafe_allow_html=True)
         tab1, tab2= st.tabs(["Overview", "Detail"])
         with tab2:
-            st.markdown("---")
-            st.subheader("🎯 Pilih Event untuk Ditampilkan")
+            st.subheader("Pilih Event untuk Ditampilkan")
 
             # Ambil daftar event unik
             unique_events = sorted([e for e in combined_df["Event"].unique() if e.strip() != ""])
@@ -97,7 +96,7 @@ def satisfaction_page():
                 # Filter dataframe sesuai event yang dipilih
                 filtered_df = combined_df[combined_df["Event"] == selected_event]
 
-                st.markdown(f"### 📋 Data untuk Event: `{selected_event}` ({len(filtered_df)} baris)")
+                st.markdown(f"### Data untuk Event: `{selected_event}` ({len(filtered_df)} baris)")
                 st.dataframe(filtered_df)
                 
                 # --- 🔍 Rekap Umum Sebelum Dataframe Detail ---
@@ -123,7 +122,7 @@ def satisfaction_page():
                     numeric_df = temp_df[temp_df["is_numeric"]].copy()
                     numeric_df[answer_col] = pd.to_numeric(numeric_df[answer_col], errors="coerce")
 
-                    st.markdown("## 📊 Rekap Umum")
+                    st.markdown("## Rekap Umum")
 
                     # --- Table 1: Rata-rata per Expert ---
                     if not numeric_df.empty:
@@ -131,7 +130,7 @@ def satisfaction_page():
                         rekap_expert["AVERAGE"] = rekap_expert[answer_col] * 10
                         rekap_expert = rekap_expert.rename(columns={expert_col: "NAMA"})[["NAMA", "AVERAGE"]]
 
-                        st.markdown("### 👨‍🏫 Rata-rata Nilai per Expert")
+                        st.markdown("### Rata-rata Nilai per Expert")
                         st.dataframe(rekap_expert, use_container_width=True)
                     else:
                         st.info("Tidak ada data numerik untuk menghitung rata-rata per expert.")
@@ -144,7 +143,7 @@ def satisfaction_page():
                             ["PERTANYAAN UBPP STRUKTUR", "NILAI ALL"]
                         ]
 
-                        st.markdown("### 🧩 Rata-rata Nilai per Pertanyaan (Semua Expert)")
+                        st.markdown("### Rata-rata Nilai per Pertanyaan (Semua Expert)")
                         st.dataframe(rekap_question, use_container_width=True)
                     else:
                         st.info("Tidak ada data numerik untuk menghitung rata-rata per pertanyaan.")
@@ -152,7 +151,7 @@ def satisfaction_page():
                     st.markdown("---")
                 
                 #--- Tampilkan data per Expert ---
-                st.markdown("## 👨‍🏫 Rekap per Expert")
+                st.markdown("## Rekap per Expert")
                 # --- Table 3: Rekap skor expert seluruh event ---
                 st.subheader("Table 3: Rekap Skor Expert seluruh event")
                 # ===== 🧠 FILTER EXPERT =====
@@ -320,13 +319,13 @@ def satisfaction_page():
                 # ===== 2️⃣ TABLE NON-NUMERIC =====
                 non_numeric_df = combined_df[combined_df["Answer_Numeric"].isna()].copy()
 
-                st.subheader("🗒️ Rekap Jawaban Non-Numeric")
+                st.subheader("Rekap Jawaban Non-Numeric")
                 st.dataframe(non_numeric_df, use_container_width=True)
                 
                 
                 
                 # --- Table 4: Rekap Pertanyaan Deskriptif per Event ---
-                st.subheader("💬 Table 4: Rekap Pertanyaan Deskriptif per Event")
+                st.subheader("Table 4: Rekap Pertanyaan Deskriptif per Event")
 
                 text_df = resume_df[~resume_df["is_numeric"]].copy()
                 if not text_df.empty:
@@ -353,7 +352,7 @@ def satisfaction_page():
                 text_df_all = combined_df[pd.to_numeric(combined_df["Answer"], errors="coerce").isna()].copy()
                 nilai_pertanyaan_list = text_df_all["Answer"].dropna().astype(str).tolist()
 
-                st.markdown("### 🧠 Resume Otomatis (dari Jawaban Deskriptif)")
+                st.markdown("### Resume Otomatis (dari Jawaban Deskriptif)")
 
                 st.write(f"Jumlah total jawaban deskriptif: {len(nilai_pertanyaan_list)}")
 
