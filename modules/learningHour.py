@@ -154,7 +154,7 @@ def learning_hour_page():
     if st.button("💾 Simpan ke Database"):
         try:
             # Pastikan kolom yang dibutuhkan ada
-            required_cols = ["expert", "total_poin", "nik"]
+            required_cols = ["expert", "total_poin", "nik", "learningHour"]
             missing_cols = [col for col in required_cols if col not in rekap_expert.columns]
             if missing_cols:
                 st.error(f"Kolom berikut tidak ditemukan di dataframe: {missing_cols}")
@@ -170,7 +170,8 @@ def learning_hour_page():
                     "nik":"nik",
                     "expert": "expert",   # kolom df → kolom Supabase
                     "total_poin": "learning_hour",
-                    "quarter": "quarter"
+                    "quarter": "quarter",
+                    "learningHour": "LH"
                 }
                 upload_df.rename(columns=column_mapping, inplace=True)
 
