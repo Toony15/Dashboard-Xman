@@ -75,19 +75,34 @@ def compensation_page():
             "Level Expert", value=10, placeholder="Type a number...", key="input_param3"
         )
         st.write("The default number is ", 10)
+    
+    colom1, colom2 = st.columns(2)
 
-    st.header("Nominal Kompensasi")
-    nominal = st.number_input(
-        "Nominal Kompensasi (Rp)", value=None, placeholder="Masukkan nilai kompensasi...", key="input_param4"
-    )
+    with colom1:
+        st.header("Nominal Kompensasi")
+        nominal = st.number_input(
+            "Nominal Kompensasi (Rp)", value=None, placeholder="Masukkan nilai kompensasi...", key="input_param4"
+        )
+    with colom2:
+        st.header("Learning Hour Minimal")
+        mimimunLH = st.number_input(
+            "Besar Learning Hour Minimal Satu Triwulannya", value=10, placeholder="Masukkan nilai Learning Hour...", key="input_param5"
+        )
 
     st.header("Hasil Perhitungan")
+    
+    max_lh = combined_df["learning_hour"].max()    
+    max_variation = combined_df["variation"].max() 
+    max_exp = combined_df["expert_level"].max() 
+    combined_df["learning_hour_skor"] = (combined_df["learning_hour"]/max_lh)*100
+    combined_df["variation_skor"] = (combined_df["variation"]/max_variation)*100
+    combined_df["expert_level_skor"] = (combined_df["experet_level"]/max_exp)*100
 
     # --- 💡 Hitung skor per baris ---
     combined_df["skor"] = (
-        combined_df["learning_hour"] * (paramLh / 100)
-        + combined_df["variation"] * (paramVariasi / 100)
-        + combined_df["expert_level"] * (paramExpert / 100)
+        combined_df["learning_hour_skor"] * (paramLh / 100)
+        + combined_df["variation_skor"] * (paramVariasi / 100)
+        + combined_df["expert_level_skor"] * (paramExpert / 100)
     )
 
     # --- 💰 Hitung kompensasi per baris (jika nominal diberikan) ---

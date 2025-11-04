@@ -142,7 +142,7 @@ def learning_hour_page():
 
     # Hitung skor normalisasi (seperti di formula)
     rekap_expert["skor"] = (rekap_expert["total_poin"] / poin_tertinggi) * 100
-    rekap_expert = rekap_expert[rekap_expert["learningHour"]>=12].copy()
+    # rekap_expert = rekap_expert[rekap_expert["learningHour"]>=12].copy()
     rekap_expert["nik"] = rekap_expert["nik"].apply(lambda x: int(x) if pd.notnull(x) else None)
 
     # Urutkan dari skor tertinggi ke terendah
@@ -154,7 +154,7 @@ def learning_hour_page():
     if st.button("💾 Simpan ke Database"):
         try:
             # Pastikan kolom yang dibutuhkan ada
-            required_cols = ["expert", "skor", "nik"]
+            required_cols = ["expert", "total_poin", "nik"]
             missing_cols = [col for col in required_cols if col not in rekap_expert.columns]
             if missing_cols:
                 st.error(f"Kolom berikut tidak ditemukan di dataframe: {missing_cols}")
@@ -169,7 +169,7 @@ def learning_hour_page():
                 column_mapping = {
                     "nik":"nik",
                     "expert": "expert",   # kolom df → kolom Supabase
-                    "skor": "learning_hour",
+                    "total_poin": "learning_hour",
                     "quarter": "quarter"
                 }
                 upload_df.rename(columns=column_mapping, inplace=True)

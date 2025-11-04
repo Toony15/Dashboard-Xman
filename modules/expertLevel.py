@@ -109,7 +109,7 @@ def expertLevel():
     if st.button("💾 Simpan ke Database"):
         try:
             # Pastikan kolom yang dibutuhkan ada
-            required_cols = ["nik","expert", "skor"]
+            required_cols = ["nik","expert", "total_poin"]
             missing_cols = [col for col in required_cols if col not in rekap.columns]
             if missing_cols:
                 st.error(f"Kolom berikut tidak ditemukan di dataframe: {missing_cols}")
@@ -124,7 +124,7 @@ def expertLevel():
                 column_mapping = {
                     "nik" : "nik",
                     "expert": "expert",       # kolom df → kolom Supabase
-                    "skor": "expert_level",      # kolom df → kolom Supabase
+                    "total_poin": "expert_level",      # kolom df → kolom Supabase
                     "quarter": "quarter"
                 }
                 upload_df.rename(columns=column_mapping, inplace=True)
