@@ -88,6 +88,7 @@ def compensation_page():
         mimimunLH = st.number_input(
             "Besar Learning Hour Minimal Satu Triwulannya", value=10, placeholder="Masukkan nilai Learning Hour...", key="input_param5"
         )
+        combined_df = combined_df[combined_df["LH"]>=12].copy()
 
     st.header("Hasil Perhitungan")
     
