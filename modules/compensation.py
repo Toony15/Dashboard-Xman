@@ -88,7 +88,7 @@ def compensation_page():
         mimimunLH = st.number_input(
             "Besar Learning Hour Minimal Satu Triwulannya", value=10, placeholder="Masukkan nilai Learning Hour...", key="input_param5"
         )
-        combined_df = combined_df[combined_df["LH"]>=12].copy()
+        combined_df = combined_df[combined_df["LH"]>=mimimunLH].copy()
 
     st.header("Hasil Perhitungan")
     
@@ -129,6 +129,6 @@ def compensation_page():
     
     # --- 🧾 Tampilkan hasil ---
     st.dataframe(
-        formatted_df[["nik", "expert", "learning_hour", "variation", "expert_level", "skor", "kompensasi (Rp)"]],
+        formatted_df[["nik", "expert", "LH", "learning_hour_skor", "variation_skor", "expert_level_skor", "skor", "kompensasi (Rp)"]],
         use_container_width=True
     )
