@@ -97,7 +97,7 @@ def compensation_page():
     max_exp = combined_df["expert_level"].max() 
     combined_df["learning_hour_skor"] = (combined_df["learning_hour"]/max_lh)*100
     combined_df["variation_skor"] = (combined_df["variation"]/max_variation)*100
-    combined_df["expert_level_skor"] = (combined_df["experet_level"]/max_exp)*100
+    combined_df["expert_level_skor"] = (combined_df["expert_level"]/max_exp)*100
 
     # --- 💡 Hitung skor per baris ---
     combined_df["skor"] = (
