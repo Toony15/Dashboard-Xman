@@ -155,6 +155,7 @@ def learning_hour_page():
         try:
             # Pastikan kolom yang dibutuhkan ada
             required_cols = ["expert", "total_poin", "nik", "learningHour"]
+            st.text(required_cols)
             missing_cols = [col for col in required_cols if col not in rekap_expert.columns]
             if missing_cols:
                 st.error(f"Kolom berikut tidak ditemukan di dataframe: {missing_cols}")
