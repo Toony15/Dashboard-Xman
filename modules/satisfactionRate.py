@@ -410,6 +410,7 @@ def satisfaction_page():
                     # --- 📦 BAGIAN DOWNLOAD EXCEL ---
                     st.markdown("---")
                     st.header("📥 Download Semua Data")
+                    output = None
                     
                     # Buat tombol download
                     try :
