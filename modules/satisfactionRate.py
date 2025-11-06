@@ -412,123 +412,127 @@ def satisfaction_page():
                     st.header("📥 Download Semua Data")
                     
                     # Buat tombol download
-                    # try :
-                    #     if st.button("💾 Download Semua Data dalam Excel"):
-                    #         output = io.BytesIO()
-                    #         with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-                    #             # Sheet 1 - Data Gabungan
-                    #             combined_df.to_excel(writer, index=False, sheet_name="Data Gabungan")
-
-                    #             # Sheet 2 - Data Filter Event
-                    #             if not filtered_df.empty:
-                    #                 filtered_df.to_excel(writer, index=False, sheet_name=f"Event_{selected_event[:25]}")
-
-                    #             # Sheet 3 - Rekap per Expert
-                    #             if 'rekap_expert' in locals():
-                    #                 rekap_expert.to_excel(writer, index=False, sheet_name="Rekap Expert")
-
-                    #             # Sheet 4 - Rekap per Pertanyaan
-                    #             if 'rekap_question' in locals():
-                    #                 rekap_question.to_excel(writer, index=False, sheet_name="Rekap Pertanyaan")
-
-                    #             # Sheet 5 - Rekap per Expert (Detail)
-                    #             if 'rekap_nilai' in locals():
-                    #                 rekap_nilai.to_excel(writer, index=False, sheet_name=f"Nilai_{selected_expert[:20]}")
-
-                    #             # Sheet 6 - Jawaban Deskriptif
-                    #             if 'rekap_teks' in locals():
-                    #                 rekap_teks.to_excel(writer, index=False, sheet_name=f"Deskripsi_{selected_expert[:20]}")
-
-                    #             # Sheet 7 - Grafik Jumlah Pelatihan per Unit
-                    #             if 'unit_count' in locals():
-                    #                 unit_count.to_excel(writer, index=False, sheet_name="Grafik Pelatihan per Unit")
-
-                    #             # Sheet 8 - Rata-rata per Event
-                    #             if 'table1' in locals():
-                    #                 table1.to_excel(writer, index=False, sheet_name="Rata-rata Event")
-
-                    #             # Sheet 9 - Rata-rata per Pertanyaan
-                    #             if 'table2' in locals():
-                    #                 table2.to_excel(writer, index=False, sheet_name="Rata-rata Pertanyaan")
-
-                    #             # Sheet 10 - Rekap Pertanyaan Deskriptif
-                    #             if 'table3' in locals():
-                    #                 table3.to_excel(writer, index=False, sheet_name="Deskriptif per Event")
-
-                    #             # Sheet 11 - Resume dari Gemini
-                    #             if 'response' in locals() and hasattr(response, 'text'):
-                    #                 pd.DataFrame({
-                    #                     ["Resume Otomatis dari Gemini"]: [response.text]
-                    #                 }).to_excel(writer, index=False, sheet_name="Resume Gemini")
-
-                    #             writer.close()
-                    #     st.download_button(
-                    #         label="⬇️ Simpan File Excel",
-                    #         data=output.getvalue(),
-                    #         file_name=f"Rekap_Evaluasi_{selected_event}.xlsx",
-                    #         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    # )
-                    # except Exception as e:
-                    #     st.error(f"🚨 Terjadi kesalahan saat membuat file Excel: {e}")
-                    try:
+                    try :
                         if st.button("💾 Download Semua Data dalam Excel"):
                             output = io.BytesIO()
                             with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
                                 # Sheet 1 - Data Gabungan
-                                if 'combined_df' in locals() and not combined_df.empty:
-                                    combined_df.to_excel(writer, index=False, sheet_name="Data Gabungan")
+                                combined_df.to_excel(writer, index=False, sheet_name="Data Gabungan")
 
                                 # Sheet 2 - Data Filter Event
-                                if 'filtered_df' in locals() and not filtered_df.empty:
+                                if not filtered_df.empty:
                                     filtered_df.to_excel(writer, index=False, sheet_name=f"Event_{selected_event[:25]}")
 
                                 # Sheet 3 - Rekap per Expert
-                                if 'rekap_expert' in locals() and not rekap_expert.empty:
+                                if 'rekap_expert' in locals():
                                     rekap_expert.to_excel(writer, index=False, sheet_name="Rekap Expert")
 
                                 # Sheet 4 - Rekap per Pertanyaan
-                                if 'rekap_question' in locals() and not rekap_question.empty:
+                                if 'rekap_question' in locals():
                                     rekap_question.to_excel(writer, index=False, sheet_name="Rekap Pertanyaan")
 
                                 # Sheet 5 - Rekap per Expert (Detail)
-                                if 'rekap_nilai' in locals() and not rekap_nilai.empty:
+                                if 'rekap_nilai' in locals():
                                     rekap_nilai.to_excel(writer, index=False, sheet_name=f"Nilai_{selected_expert[:20]}")
 
                                 # Sheet 6 - Jawaban Deskriptif
-                                if 'rekap_teks' in locals() and not rekap_teks.empty:
+                                if 'rekap_teks' in locals():
                                     rekap_teks.to_excel(writer, index=False, sheet_name=f"Deskripsi_{selected_expert[:20]}")
 
                                 # Sheet 7 - Grafik Jumlah Pelatihan per Unit
-                                if 'unit_count' in locals() and not unit_count.empty:
+                                if 'unit_count' in locals():
                                     unit_count.to_excel(writer, index=False, sheet_name="Grafik Pelatihan per Unit")
 
                                 # Sheet 8 - Rata-rata per Event
-                                if 'table1' in locals() and not table1.empty:
+                                if 'table1' in locals():
                                     table1.to_excel(writer, index=False, sheet_name="Rata-rata Event")
 
                                 # Sheet 9 - Rata-rata per Pertanyaan
-                                if 'table2' in locals() and not table2.empty:
+                                if 'table2' in locals():
                                     table2.to_excel(writer, index=False, sheet_name="Rata-rata Pertanyaan")
 
                                 # Sheet 10 - Rekap Pertanyaan Deskriptif
-                                if 'table3' in locals() and not table3.empty:
+                                if 'table3' in locals():
                                     table3.to_excel(writer, index=False, sheet_name="Deskriptif per Event")
 
                                 # Sheet 11 - Resume dari Gemini
                                 if 'response' in locals() and hasattr(response, 'text'):
                                     pd.DataFrame({
-                                        "Resume Otomatis dari Gemini": [response.text]
+                                        ["Resume Otomatis dari Gemini"]: [response.text]
                                     }).to_excel(writer, index=False, sheet_name="Resume Gemini")
 
-                            # Setelah file siap, tampilkan tombol unduhan
-                            st.download_button(
-                                label="⬇️ Simpan File Excel",
-                                data=output.getvalue(),
-                                file_name=f"Rekap_Evaluasi_{selected_event}.xlsx",
-                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                            )
-
-                            st.success(f"✅ File berhasil dibuat untuk event '{selected_event}'")
-
+                                writer.close()
+                        st.download_button(
+                            label="⬇️ Simpan File Excel",
+                            data=output.getvalue(),
+                            file_name=f"Rekap_Evaluasi_{selected_event}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
                     except Exception as e:
                         st.error(f"🚨 Terjadi kesalahan saat membuat file Excel: {e}")
+                    
+                    
+                    # ===========================================================================================
+                    
+                    # try:
+                    #     if st.button("💾 Download Semua Data dalam Excel"):
+                    #         output = io.BytesIO()
+                    #         with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+                    #             # Sheet 1 - Data Gabungan
+                    #             if 'combined_df' in locals() and not combined_df.empty:
+                    #                 combined_df.to_excel(writer, index=False, sheet_name="Data Gabungan")
+
+                    #             # Sheet 2 - Data Filter Event
+                    #             if 'filtered_df' in locals() and not filtered_df.empty:
+                    #                 filtered_df.to_excel(writer, index=False, sheet_name=f"Event_{selected_event[:25]}")
+
+                    #             # Sheet 3 - Rekap per Expert
+                    #             if 'rekap_expert' in locals() and not rekap_expert.empty:
+                    #                 rekap_expert.to_excel(writer, index=False, sheet_name="Rekap Expert")
+
+                    #             # Sheet 4 - Rekap per Pertanyaan
+                    #             if 'rekap_question' in locals() and not rekap_question.empty:
+                    #                 rekap_question.to_excel(writer, index=False, sheet_name="Rekap Pertanyaan")
+
+                    #             # Sheet 5 - Rekap per Expert (Detail)
+                    #             if 'rekap_nilai' in locals() and not rekap_nilai.empty:
+                    #                 rekap_nilai.to_excel(writer, index=False, sheet_name=f"Nilai_{selected_expert[:20]}")
+
+                    #             # Sheet 6 - Jawaban Deskriptif
+                    #             if 'rekap_teks' in locals() and not rekap_teks.empty:
+                    #                 rekap_teks.to_excel(writer, index=False, sheet_name=f"Deskripsi_{selected_expert[:20]}")
+
+                    #             # Sheet 7 - Grafik Jumlah Pelatihan per Unit
+                    #             if 'unit_count' in locals() and not unit_count.empty:
+                    #                 unit_count.to_excel(writer, index=False, sheet_name="Grafik Pelatihan per Unit")
+
+                    #             # Sheet 8 - Rata-rata per Event
+                    #             if 'table1' in locals() and not table1.empty:
+                    #                 table1.to_excel(writer, index=False, sheet_name="Rata-rata Event")
+
+                    #             # Sheet 9 - Rata-rata per Pertanyaan
+                    #             if 'table2' in locals() and not table2.empty:
+                    #                 table2.to_excel(writer, index=False, sheet_name="Rata-rata Pertanyaan")
+
+                    #             # Sheet 10 - Rekap Pertanyaan Deskriptif
+                    #             if 'table3' in locals() and not table3.empty:
+                    #                 table3.to_excel(writer, index=False, sheet_name="Deskriptif per Event")
+
+                    #             # Sheet 11 - Resume dari Gemini
+                    #             if 'response' in locals() and hasattr(response, 'text'):
+                    #                 pd.DataFrame({
+                    #                     "Resume Otomatis dari Gemini": [response.text]
+                    #                 }).to_excel(writer, index=False, sheet_name="Resume Gemini")
+
+                    #         # Setelah file siap, tampilkan tombol unduhan
+                    #         st.download_button(
+                    #             label="⬇️ Simpan File Excel",
+                    #             data=output.getvalue(),
+                    #             file_name=f"Rekap_Evaluasi_{selected_event}.xlsx",
+                    #             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    #         )
+
+                    #         st.success(f"✅ File berhasil dibuat untuk event '{selected_event}'")
+
+                    # except Exception as e:
+                    #     st.error(f"🚨 Terjadi kesalahan saat membuat file Excel: {e}")
