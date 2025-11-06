@@ -422,28 +422,31 @@ def satisfaction_page():
                     }
 
                     # 📁 Tombol ekspor Excel
-                    if st.button("💾 Download Semua DataFrame ke Excel"):
-                        try:
-                            output = io.BytesIO()
-                            with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-                                for sheet_name, df in dfs_to_export.items():
-                                    if not df.empty:
-                                        df.to_excel(writer, index=False, sheet_name=sheet_name[:31])  # batas 31 karakter untuk nama sheet
-                                    else:
-                                        st.warning(f"⚠️ DataFrame '{sheet_name}' kosong — dilewati.")
+                    try:
+                        if st.button("💾 Download Semua DataFrame ke Excel"):
+                            try:
+                                output = io.BytesIO()
+                                with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+                                    for sheet_name, df in dfs_to_export.items():
+                                        if not df.empty:
+                                            df.to_excel(writer, index=False, sheet_name=sheet_name[:31])  # batas 31 karakter untuk nama sheet
+                                        else:
+                                            st.warning(f"⚠️ DataFrame '{sheet_name}' kosong — dilewati.")
 
-                                # Simpan workbook
-                                writer.close()
+                                    # Simpan workbook
+                                    writer.close()
 
-                            # ⬇️ Unduh file ke user
-                            st.download_button(
-                                label="📂 Klik untuk Download File Excel",
-                                data=output.getvalue(),
-                                file_name="laporan_komprehensif.xlsx",
-                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                            )
+                                # ⬇️ Unduh file ke user
+                                st.download_button(
+                                    label="📂 Klik untuk Download File Excel",
+                                    data=output.getvalue(),
+                                    file_name="laporan_komprehensif.xlsx",
+                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                                )
 
-                            st.success("✅ Semua DataFrame berhasil diekspor ke Excel!")
+                                st.success("✅ Semua DataFrame berhasil diekspor ke Excel!")
 
-                        except Exception as e:
-                            st.error(f"❌ Gagal mengekspor data: {e}")
+                            except Exception as e:
+                                st.error(f"❌ Gagal mengekspor data: {e}")
+                    except Exception as e:
+                        st.error(f"❌ Terjadi Kesalahan: {e}")
