@@ -76,6 +76,11 @@ def satisfaction_page():
                 </style>
             """, unsafe_allow_html=True)
         tab1, tab2= st.tabs(["Overview", "Detail"])
+        
+        # ==========================================================
+        # DETAIL
+        # ==========================================================
+        
         with tab2:
             st.subheader("Pilih Event untuk Ditampilkan")
 
@@ -215,7 +220,10 @@ def satisfaction_page():
 
                         # Tambahkan garis pemisah antar expert
                         st.markdown("---")
-                
+            # =============================================================
+            # OVERVIEW
+            # =============================================================
+            
             with tab1:        
                 # --- 📈 RESUME SECTION ---
                 st.markdown(
@@ -380,7 +388,7 @@ def satisfaction_page():
                         4. Sebutkan rekomendasi perbaikan atau pengembangan ke depannya.
                         5. Jika memungkinkan, berikan penilaian keseluruhan dalam satu paragraf akhir.
 
-                        Gunakan gaya bahasa profesional dan ringkas seperti laporan manajerial.
+                        Gunakan gaya bahasa profesional dan ringkas seperti laporan manajerial, buat dalam bentuk poin poin, maksima setiap poinnya hanya 100 kata.
                         Jangan menyalin mentah-mentah isi teks, tetapi buatlah sintesis berdasarkan pemahaman Anda.
 
                         Berikut data yang harus dianalisis:
