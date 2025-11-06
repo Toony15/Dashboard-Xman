@@ -432,12 +432,12 @@ def satisfaction_page():
                                     rekap_question.to_excel(writer, index=False, sheet_name="Rekap Pertanyaan")
 
                                 # Sheet 5 - Rekap per Expert (Detail)
-                                if 'rekap_nilai' in locals():
-                                    rekap_nilai.to_excel(writer, index=False, sheet_name=f"Nilai_{selected_expert[:20]}")
+                                # if 'rekap_nilai' in locals():
+                                #     rekap_nilai.to_excel(writer, index=False, sheet_name=f"Nilai_{selected_expert[:20]}")
 
-                                # Sheet 6 - Jawaban Deskriptif
-                                if 'rekap_teks' in locals():
-                                    rekap_teks.to_excel(writer, index=False, sheet_name=f"Deskripsi_{selected_expert[:20]}")
+                                # # Sheet 6 - Jawaban Deskriptif
+                                # if 'rekap_teks' in locals():
+                                #     rekap_teks.to_excel(writer, index=False, sheet_name=f"Deskripsi_{selected_expert[:20]}")
 
                                 # Sheet 7 - Grafik Jumlah Pelatihan per Unit
                                 if 'unit_count' in locals():
