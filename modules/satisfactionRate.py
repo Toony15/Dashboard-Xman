@@ -413,38 +413,20 @@ def satisfaction_page():
                     output = None
                     
                     # Buat tombol download
-                    try :
-                        if st.button("💾 Download Semua Data dalam Excel"):
+                    try:
                             output = io.BytesIO()
                             with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
                                 # Sheet 1 - Data Gabungan
                                 combined_df.to_excel(writer, index=False, sheet_name="Data Gabungan")
 
-                                # Sheet 2 - Data Filter Event
-                                if not filtered_df.empty:
-                                    filtered_df.to_excel(writer, index=False, sheet_name=f"Event_{selected_event[:25]}")
+                                # Sheet 2 - Data Event
+                                if not event_count.empty:
+                                    event_count.to_excel(writer, index=False, sheet_name=f"Event")
 
                                 # Sheet 3 - Rekap per Expert
-                                if 'rekap_expert' in locals():
-                                    rekap_expert.to_excel(writer, index=False, sheet_name="Rekap Expert")
-
-                                # Sheet 4 - Rekap per Pertanyaan
-                                if 'rekap_question' in locals():
-                                    rekap_question.to_excel(writer, index=False, sheet_name="Rekap Pertanyaan")
-
-                                # Sheet 5 - Rekap per Expert (Detail)
-                                # if 'rekap_nilai' in locals():
-                                #     rekap_nilai.to_excel(writer, index=False, sheet_name=f"Nilai_{selected_expert[:20]}")
-
-                                # # Sheet 6 - Jawaban Deskriptif
-                                # if 'rekap_teks' in locals():
-                                #     rekap_teks.to_excel(writer, index=False, sheet_name=f"Deskripsi_{selected_expert[:20]}")
-
-                                # Sheet 7 - Grafik Jumlah Pelatihan per Unit
-                                if 'unit_count' in locals():
-                                    unit_count.to_excel(writer, index=False, sheet_name="Grafik Pelatihan per Unit")
-
-                                # Sheet 8 - Rata-rata per Event
+                                if 'avg_score_per_expert' in locals():
+                                    avg_score_per_expert.to_excel(writer, index=False, sheet_name="Rekap Expert")
+                                
                                 if 'table1' in locals():
                                     table1.to_excel(writer, index=False, sheet_name="Rata-rata Event")
 
@@ -456,18 +438,12 @@ def satisfaction_page():
                                 if 'table3' in locals():
                                     table3.to_excel(writer, index=False, sheet_name="Deskriptif per Event")
 
-                                # Sheet 11 - Resume dari Gemini
-                                if 'response' in locals() and hasattr(response, 'text'):
-                                    pd.DataFrame({
-                                        ["Resume Otomatis dari Gemini"]: [response.text]
-                                    }).to_excel(writer, index=False, sheet_name="Resume Gemini")
-
                                 writer.close()
-                        st.download_button(
-                            label="⬇️ Simpan File Excel",
-                            data=output.getvalue(),
-                            file_name=f"Rekap_Evaluasi_{selected_event}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                                st.download_button(
+                                    label="⬇️ Simpan File Excel",
+                                    data=output.getvalue(),
+                                    file_name=f"Rekap_Evaluasi_{selectedQuarter}.xlsx",
+                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
                     except Exception as e:
                         st.error(f"🚨 Terjadi kesalahan saat membuat file Excel: {e}")
