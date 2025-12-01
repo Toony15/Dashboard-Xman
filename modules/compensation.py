@@ -99,21 +99,21 @@ def compensation_page():
     combined_df["variation_skor"] = (combined_df["variation"]/max_variation)*100
     combined_df["expert_level_skor"] = (combined_df["expert_level"]/max_exp)*100
 
-    # --- 💡 Hitung skor per baris ---
+    # --- Hitung skor per baris ---
     combined_df["skor"] = (
         combined_df["learning_hour_skor"] * (paramLh / 100)
         + combined_df["variation_skor"] * (paramVariasi / 100)
         + combined_df["expert_level_skor"] * (paramExpert / 100)
     )
 
-    # --- 💰 Hitung kompensasi per baris (jika nominal diberikan) ---
+    # --- Hitung kompensasi per baris (jika nominal diberikan) ---
     if nominal:
         total_skor = combined_df["skor"].sum()
         combined_df["kompensasi"] = (combined_df["skor"] / total_skor) * nominal
     else:
         combined_df["kompensasi"] = 0
 
-    # --- 💵 Format nilai Rupiah ---
+    # --- Format nilai Rupiah ---
     def format_rupiah(x):
         return f"Rp {x:,.0f}".replace(",", ".")
 

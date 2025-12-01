@@ -378,18 +378,26 @@ def satisfaction_page():
                     if "nilai_pertanyaan_list" in st.session_state:
                         data_text = "\n".join(st.session_state["nilai_pertanyaan_list"])
                         prompt = f"""
-                        Analisis dan ringkaslah hasil berikut secara profesional dan terstruktur.
-                        Data berikut berisi hasil evaluasi atau penilaian individu/kelompok.
+                        Analisis dan rangkumlah data berikut secara profesional, ringkas, dan terstruktur seperti laporan manajerial.
 
-                        Tugas Anda:
-                        1. Sajikan ringkasan umum dari hasil tersebut.
-                        2. Jelaskan kelebihan utama (aspek positif yang menonjol).
-                        3. Jelaskan kekurangan atau area yang masih perlu diperbaiki.
-                        4. Sebutkan rekomendasi perbaikan atau pengembangan ke depannya.
-                        5. Jika memungkinkan, berikan penilaian keseluruhan dalam satu paragraf akhir.
+                        FORMAT OUTPUT WAJIB:
+                        1. Judul **“Apresiasi”**, diikuti poin bernomor 1–5.
+                        - Setiap poin harus diawali dengan frasa yang ditebalkan (**…**) sebagai highlight utama.
+                        - Kalimat selanjutnya merupakan elaborasi singkat, langsung pada inti, maksimal 2–3 kalimat.
 
-                        Gunakan gaya bahasa profesional dan ringkas seperti laporan manajerial, buat dalam bentuk poin poin, maksima setiap poinnya hanya 100 kata.
-                        Jangan menyalin mentah-mentah isi teks, tetapi buatlah sintesis berdasarkan pemahaman Anda.
+                        2. Judul **“Saran”**, diikuti poin bernomor 1–4.
+                        - Gunakan struktur dan gaya yang sama: poin bernomor, frasa awal ditebalkan, isi ringkas namun jelas.
+
+                        ATURAN PENULISAN:
+                        - Gunakan gaya bahasa profesional, objektif, dan mudah dibaca seperti laporan evaluasi eksekutif.
+                        - Sintesis harus berdasarkan pemahaman Anda, bukan menyalin mentah dari teks.
+                        - Setiap poin maksimal 100 kata.
+                        - Output harus rapi, padat, dan sesuai struktur seperti contoh visual (judul → poin → bold keyword → uraian singkat).
+
+                        TUGAS ANALISIS:
+                        1. Buat ringkasan apresiasi atau kelebihan utama.
+                        2. Buat ringkasan saran, kekurangan, atau area pengembangan.
+                        3. Sintesis harus relevan dengan data dan dibuat seolah hasil evaluasi nyata.
 
                         Berikut data yang harus dianalisis:
                         --------------------
