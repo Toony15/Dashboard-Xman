@@ -378,31 +378,60 @@ def satisfaction_page():
                     if "nilai_pertanyaan_list" in st.session_state:
                         data_text = "\n".join(st.session_state["nilai_pertanyaan_list"])
                         prompt = f"""
-                        Analisis dan rangkumlah data berikut secara profesional, ringkas, dan terstruktur seperti laporan manajerial.
+                        Lakukan analisis data berikut dengan mengikuti instruksi proses secara ketat dan berurutan. 
+                        Anda harus mematuhi seluruh langkah analisis, struktur output, dan gaya penulisan di bawah ini.
 
-                        FORMAT OUTPUT WAJIB:
-                        1. Judul **“Apresiasi”**, diikuti poin bernomor 1–5.
-                        - Setiap poin harus diawali dengan frasa yang ditebalkan (**…**) sebagai highlight utama.
-                        - Kalimat selanjutnya merupakan elaborasi singkat, langsung pada inti, maksimal 2–3 kalimat.
+                        ======================
+                        PROSES ANALISIS DATA
+                        ======================
 
-                        2. Judul **“Saran”**, diikuti poin bernomor 1–4.
-                        - Gunakan struktur dan gaya yang sama: poin bernomor, frasa awal ditebalkan, isi ringkas namun jelas.
+                        1. IDENTIFIKASI INTI INFORMASI
+                        - Baca seluruh data dan temukan pola umum: tema, kecenderungan, dan fokus umpan balik.
+                        - Kelompokkan isi ke dalam dua kategori besar: (a) aspek positif, (b) area perbaikan.
 
-                        ATURAN PENULISAN:
-                        - Gunakan gaya bahasa profesional, objektif, dan mudah dibaca seperti laporan evaluasi eksekutif.
-                        - Sintesis harus berdasarkan pemahaman Anda, bukan menyalin mentah dari teks.
-                        - Setiap poin maksimal 100 kata.
-                        - Output harus rapi, padat, dan sesuai struktur seperti contoh visual (judul → poin → bold keyword → uraian singkat).
+                        2. EKSTRAKSI INSIGHT
+                        - Dari kategori positif, ambil 5 poin paling kuat yang benar-benar mewakili kekuatan utama.
+                        - Dari kategori perbaikan, ambil 4 poin paling relevan untuk pengembangan.
+                        - Sintesis insight: tidak boleh menyalin teks mentah, tetapi mengolahnya menjadi kalimat analitis.
 
-                        TUGAS ANALISIS:
-                        1. Buat ringkasan apresiasi atau kelebihan utama.
-                        2. Buat ringkasan saran, kekurangan, atau area pengembangan.
-                        3. Sintesis harus relevan dengan data dan dibuat seolah hasil evaluasi nyata.
+                        3. PENILAIAN KRITIS
+                        - Tinjau konsistensi antar poin dan pastikan masing-masing adalah temuan unik, bukan duplikasi.
+                        - Susun insight sehingga mengalir dari yang paling fundamental ke yang bersifat teknis.
 
-                        Berikut data yang harus dianalisis:
-                        --------------------
+                        4. FORMULASI OUTPUT
+                        - Hasil akhir wajib mengikuti format berikut:
+
+                        ======================
+                        FORMAT OUTPUT WAJIB
+                        ======================
+
+                        Judul 1: **Apresiasi**
+                        Tampilkan 5 poin bernomor.
+                        Setiap poin harus memenuhi format:
+                        - Dimulai dengan frasa kunci yang ditebalkan (**…**) sebagai highlight insight.
+                        - Dilanjutkan 1–2 kalimat evaluatif yang ringkas, profesional, dan langsung ke inti.
+                        - Maksimal 100 kata per poin.
+
+                        Judul 2: **Saran**
+                        Tampilkan 4 poin bernomor.
+                        Setiap poin menggunakan format yang sama:
+                        - Frasa kunci ditebalkan (**…**).
+                        - Diikuti penjelasan 1–2 kalimat yang bersifat korektif atau pengembangan.
+
+                        ======================
+                        GAYA PENULISAN
+                        ======================
+                        - Gunakan bahasa formal, manajerial, objektif, dan mudah dipahami.
+                        - Tidak menggunakan kata yang bertele-tele.
+                        - Fokus pada insight, bukan deskripsi ulang.
+                        - Hindari jargon teknis berlebihan.
+                        - Panjang keseluruhan harus padat namun komprehensif.
+
+                        ======================
+                        DATA YANG DIANALISIS
+                        ======================
                         {data_text}
-                        --------------------
+
                         """
 
                         response = client.models.generate_content(
