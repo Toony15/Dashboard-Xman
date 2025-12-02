@@ -94,11 +94,10 @@ def compensation_page():
     
     exclude_NIK = [860066, 910156, 730329]
     # filter dataframe dengan exclude nama
-    combined_df = combined_df[~combined_df["nik"].isin(exclude_NIK)]
-
     on = st.toggle("Exclude EXMAN")
     if on:
-        st.write("Feature activated!")
+        combined_df = combined_df[~combined_df["nik"].isin(exclude_NIK)]
+        st.write("Filter activated!")
     
     max_lh = combined_df["learning_hour"].max()    
     max_variation = combined_df["variation"].max() 
