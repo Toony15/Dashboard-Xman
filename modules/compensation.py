@@ -92,6 +92,14 @@ def compensation_page():
 
     st.header("Hasil Perhitungan")
     
+    exclude_NIK = [860066, 910156, 730329]
+    # filter dataframe dengan exclude nama
+    combined_df = combined_df[~combined_df["nik"].isin(exclude_NIK)]
+
+    on = st.toggle("Exclude EXMAN")
+    if on:
+        st.write("Feature activated!")
+    
     max_lh = combined_df["learning_hour"].max()    
     max_variation = combined_df["variation"].max() 
     max_exp = combined_df["expert_level"].max() 
@@ -120,14 +128,7 @@ def compensation_page():
     # Format kolom nominal dan kompensasi
     formatted_df = combined_df.copy()
     formatted_df["kompensasi (Rp)"] = formatted_df["kompensasi"].apply(format_rupiah)
-    exclude_NIK = [860066, 910156, 730329]
-
-    # filter dataframe dengan exclude nama
-    formatted_df = formatted_df[~formatted_df["nik"].isin(exclude_NIK)]
-
-    on = st.toggle("Exclude EXMAN")
-    if on:
-        st.write("Feature activated!")
+    
     # Ringkasan hasil
     if nominal:
         st.success(f"✅ Total {len(combined_df)} baris data dihitung untuk {quarter} dengan total kompensasi {format_rupiah(nominal)}")
