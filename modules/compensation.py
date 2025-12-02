@@ -120,7 +120,14 @@ def compensation_page():
     # Format kolom nominal dan kompensasi
     formatted_df = combined_df.copy()
     formatted_df["kompensasi (Rp)"] = formatted_df["kompensasi"].apply(format_rupiah)
+    exclude_NIK = ["860066", "910156", "730329"]
 
+    # filter dataframe dengan exclude nama
+    formatted_df = formatted_df[~formatted_df["nik"].isin(exclude_NIK)]
+
+    on = st.toggle("Exclude EXMAN")
+    if on:
+        st.write("Feature activated!")
     # Ringkasan hasil
     if nominal:
         st.success(f"✅ Total {len(combined_df)} baris data dihitung untuk {quarter} dengan total kompensasi {format_rupiah(nominal)}")
