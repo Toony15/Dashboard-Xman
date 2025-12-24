@@ -406,14 +406,14 @@ def satisfaction_page():
                         ======================
 
                         Judul 1: **Apresiasi**
-                        Tampilkan 5 poin bernomor.
+                        Tampilkan minimal 5 poin bernomor.
                         Setiap poin harus memenuhi format:
                         - Dimulai dengan frasa kunci yang ditebalkan (**…**) sebagai highlight insight.
                         - Dilanjutkan 1–2 kalimat evaluatif yang ringkas, profesional, dan langsung ke inti.
                         - Maksimal 100 kata per poin.
 
                         Judul 2: **Saran**
-                        Tampilkan 4 poin bernomor.
+                        Tampilkan minimal 5 poin bernomor.
                         Setiap poin menggunakan format yang sama:
                         - Frasa kunci ditebalkan (**…**).
                         - Diikuti penjelasan 1–2 kalimat yang bersifat korektif atau pengembangan.
