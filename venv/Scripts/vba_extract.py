@@ -1,4 +1,4 @@
-#!E:\CorpU\EXMAN\expert-calculator\venv\Scripts\python.exe
+#!C:\Users\LENOVO\expert-calculator-v2\venv\Scripts\python.exe
 
 ##############################################################################
 #

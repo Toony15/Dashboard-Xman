@@ -1,12 +1,11 @@
-import streamlit as st
 import pandas as pd
-import io
-from dbConfig import get_db_connection
-from google import genai
+import streamlit as st
 from dataManager import load_all_data
+from dbConfig import get_db_connection
 
-def newVariationPage():
+def newVariation():
     supabase = get_db_connection()
+
     def read_and_merge(files):
         all_data = []
         for uploaded_file in files:
@@ -15,183 +14,175 @@ def newVariationPage():
             except Exception as e:
                 st.error(f"Gagal membaca file {uploaded_file.name}: {e}")
                 continue
-            # Ambil nama file tanpa ekstensi
             file_name = uploaded_file.name.rsplit(".", 1)[0]
             parts = file_name.split("_")
-            event, expert, unit,quarter = (parts + ["", "", "", ""])[:4]
-
-            # Tambahkan kolom metadata
+            event, expert, unit, quarter = (parts + ["", "", "", ""])[:4]
             df["Event"] = event
             df["Expert"] = expert
             df["Unit"] = unit
             df["Quarter"] = quarter
             all_data.append(df)
-
         if all_data:
             combined = pd.concat(all_data, ignore_index=True)
             combined["Event"] = combined["Event"].fillna("").astype(str).str.strip()
             return combined
-        else:
-            return pd.DataFrame()
-    
-    st.title("Variation")  
-    options = ["Upload file","From Data Base"]
-    mode = st.pills("Data Resource", options, selection_mode="single", default="From Data Base")
-    if mode == "Upload file":   
-        st.header("📊 Upload File")
+        return pd.DataFrame()
 
-        uploaded_files = st.file_uploader(
-            "Upload data (format Excel)", 
-            accept_multiple_files=True, 
-            type=["xls", "xlsx"]
-        )
-        # Simpan hasil upload ke session_state agar tidak hilang setelah interaksi
+    st.title("Variation Score")
+
+    options = ["Upload file", "From Data Base"]
+    mode = st.pills("Data Resource", options, selection_mode="single", default="From Data Base")
+
+    if mode == "Upload file":
+        st.header("📁 Upload File")
+        uploaded_files = st.file_uploader("Upload data (format Excel)", accept_multiple_files=True, type=["xls", "xlsx"])
         if uploaded_files:
             st.session_state["combined_df"] = read_and_merge(uploaded_files)
-        # Ambil data dari session_state
         combined_df = st.session_state.get("combined_df", pd.DataFrame())
-    elif mode == "From Data Base":
-        viewTable="learningHour_new"
-        combined_df = load_all_data(viewTable)
+    else:
+        combined_df = load_all_data("learning_hour")
+
     if combined_df.empty:
         st.info("Tidak terdapat data")
-    else:
-        # st.success(f"✅ Data berhasil digabungkan ({len(combined_df)} baris total)")
-        st.dataframe(combined_df)
-        st.markdown("""
-                <style>
-                div[data-baseweb="tab-list"] {
-                    justify-content: space-between; /* Membagi tab secara merata */
-                    width: 100%;
-                }
-                button[data-baseweb="tab"] {
-                    flex: 1; /* Membuat tiap tab memiliki lebar sama */
-                    max-width: 100%;
-                }
-                </style>
-            """, unsafe_allow_html=True)
-    st.empty
+        return
 
-    # === Pilih Quarter terkini ===
-    quarter=["Q1", "Q2", "Q3", "Q4"]
-    quarter = st.pills("Pilih Quarter", quarter, selection_mode="single", default="Q1")
-    combined_df = combined_df[combined_df["quarter"]==quarter]
-    
-    # Daftar variasi yang ingin direkap
+    st.dataframe(combined_df)
+
+    # === DEFINE TARGET VARIATIONS DULU ===
     target_variations = [
         "Coaching (Coach)/Mentoring (Mentor)",
         "Expert Insight (Pembicara)",
         "Teaching",
         "Learning Content Designer/Developer",
-        "Penguji/Assessor"
+        "Penguji/Assessor",
+        "Self Learning"
     ]
 
-    # Hitung jumlah kemunculan setiap variasi untuk masing-masing expert
-    rekap_df = (
-        combined_df[combined_df["variasi"].isin(target_variations)]
-        .groupby(["nik","expert", "variasi"])
-        .size()
-        .unstack(fill_value=0)
-        .reset_index()
-    )
+    # === DEBUG ===
+    st.subheader("🔍 Debug: Cek Variasi yang Ada")
+    st.write("Unique variasi values:")
+    st.write(combined_df["variasi"].unique())
+    
+    missing = combined_df[~combined_df["variasi"].isin(target_variations)]
+    st.write("Variasi yang tidak match target:")
+    st.write(missing["variasi"].unique())
 
-    # Pastikan semua kolom variasi ada (jika ada yang tidak muncul di data)
-    for var in target_variations:
-        if var not in rekap_df.columns:
-            rekap_df[var] = 0
+    # === CEK EXPERT YANG MISSING ===
+    st.subheader("⚠️ Expert yang MISSING di Variation")
+    learning_hour_df = load_all_data("learning_hour")
+    learning_hour_experts = learning_hour_df.groupby(["nik", "expert"]).size().reset_index(name="count")[["nik", "expert"]]
+    variation_experts = combined_df[combined_df["variasi"].isin(target_variations)].groupby(["nik", "expert"]).size().reset_index(name="count")[["nik", "expert"]]
+    missing_experts = learning_hour_experts[~learning_hour_experts[["nik", "expert"]].apply(tuple, 1).isin(variation_experts[["nik", "expert"]].apply(tuple, 1))]
+    
+    # === CEK VARIASI DARI MISSING EXPERTS ===
+    st.subheader("📊 Variasi dari 34 Expert MISSING")
 
-    # Tambahkan kolom id urut dimulai dari 1
-    rekap_df.insert(0, "id", range(1, len(rekap_df) + 1))
+    missing_niks = missing_experts["nik"].unique()
+    missing_data = combined_df[combined_df["nik"].isin(missing_niks)]
 
-    # Urutkan kolom sesuai format yang diminta
-    rekap_df = rekap_df[
-        ["nik", "expert"]
-        + target_variations
+    st.write("Variasi apa yang dimiliki 34 expert missing:")
+    st.write(missing_data["variasi"].unique())
+
+    st.write("\nDetail 34 expert missing:")
+    st.dataframe(missing_data[["nik", "expert", "variasi"]].drop_duplicates())
+
+    st.write(f"Total expert di Learning Hour: {len(learning_hour_experts)}")
+    st.write(f"Total expert di Variation: {len(variation_experts)}")
+    st.write(f"Total expert MISSING: {len(missing_experts)}")
+    if len(missing_experts) > 0:
+        st.dataframe(missing_experts)
+    else:
+        st.info("Semua expert ada ✅")
+
+
+    quarters = ["Q1", "Q2", "Q3", "Q4"]
+    quarter = st.pills("Pilih Quarter", quarters, selection_mode="single", default="Q1")
+
+    if "quarter" in combined_df.columns:
+        combined_df = combined_df[combined_df["quarter"] == quarter]
+    elif "Quarter" in combined_df.columns:
+        combined_df = combined_df[combined_df["Quarter"] == quarter]
+
+    target_variations = [
+        "Coaching (Coach)/Mentoring (Mentor)",
+        "Expert Insight (Pembicara)",
+        "Teaching",
+        "Learning Content Designer/Developer",
+        "Penguji/Assessor",
+        "Self Learning"
     ]
 
-
-    # Mapping bobot sesuai variasi
     bobot_map = {
         "Coaching (Coach)/Mentoring (Mentor)": 1.5,
         "Expert Insight (Pembicara)": 1.3,
         "Teaching": 1.4,
         "Learning Content Designer/Developer": 1.5,
-        "Publikasi Artikel/Video/Podcast": 1.1,
-        "Penguji/Assessor": 1.2
+        "Penguji/Assessor": 1.2,
+        "Self Learning": 1.0
     }
 
-    # Hitung total poin berdasarkan jumlah × bobot
-    rekap_df["total_poin"] = sum(
-        rekap_df[col] * bobot_map.get(col, 0)
+    if "variasi" not in combined_df.columns:
+        st.warning("Kolom 'variasi' tidak ditemukan")
+        return
+
+    rekap_variation = (
+        combined_df[combined_df["variasi"].isin(target_variations)]
+        .groupby(["nik", "expert", "variasi"])
+        .size()
+        .unstack(fill_value=0)
+        .reset_index()
+    )
+
+    for var in target_variations:
+        if var not in rekap_variation.columns:
+            rekap_variation[var] = 0
+
+    rekap_variation["total_poin_variation"] = sum(
+        rekap_variation[col] * bobot_map.get(col, 0)
         for col in target_variations
     )
 
-    # Hitung skor normalisasi (poin_aktual / poin_tertinggi * 100)
-    max_poin = rekap_df["total_poin"].max()
-    rekap_df["skor"] = (rekap_df["total_poin"] / max_poin * 100).round(2)
-    rekap_df["nik"] = rekap_df["nik"].apply(lambda x: int(x) if pd.notnull(x) else None)
+    max_poin = rekap_variation["total_poin_variation"].max()
+    if max_poin > 0:
+        rekap_variation["skor_variation"] = (rekap_variation["total_poin_variation"] / max_poin * 100).round(2)
+    else:
+        rekap_variation["skor_variation"] = 0
 
-    # Tampilkan hasil
-    st.dataframe(rekap_df, use_container_width=True)
-    
-    if st.button("💾 Simpan ke Database"):
+    rekap_variation["nik"] = rekap_variation["nik"].astype(int)
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Total Penugasan", len(combined_df), border=True)
+    col2.metric("Total Expert", rekap_variation["expert"].nunique(), border=True)
+    col3.metric("Max Variation Score", f"{max_poin:.2f}", border=True)
+
+    st.subheader("📋 Detail Frekuensi Variasi per Expert")
+    display_cols = ["nik", "expert"] + target_variations + ["total_poin_variation", "skor_variation"]
+    st.dataframe(rekap_variation[display_cols], use_container_width=True)
+
+    rekap_summary = rekap_variation[["nik", "expert", "skor_variation"]].copy()
+    rekap_summary = rekap_summary.sort_values(by="skor_variation", ascending=False).reset_index(drop=True)
+
+    st.subheader("📊 Rekap Variation Score per Expert (0-100)")
+    st.dataframe(rekap_summary[["nik", "expert", "skor_variation"]], use_container_width=True)
+
+    if st.button("💾 Simpan Variation Score ke Database", key="btn_save_variation"):
         try:
-            # Pastikan kolom yang dibutuhkan ada
-            required_cols = ["nik","expert", "total_poin"]
-            missing_cols = [col for col in required_cols if col not in rekap_df.columns]
-            if missing_cols:
-                st.error(f"Kolom berikut tidak ditemukan di dataframe: {missing_cols}")
-            else:
-                # Ambil kolom yang diperlukan
-                upload_df = rekap_df[required_cols].copy()
+            upload_df = rekap_summary[["nik", "expert", "skor_variation"]].copy()
+            upload_df["quarter"] = quarter
+            upload_df = upload_df.rename(columns={"skor_variation": "variation"})
 
-                # Tambahkan kolom quarter dari input user
-                upload_df["quarter"] = quarter
+            updated = 0
+            for _, row in upload_df.iterrows():
+                supabase.table("calculated").update({
+                    "variation": float(row["variation"])
+                }).eq("nik", int(row["nik"])).eq("expert", row["expert"]).eq("quarter", row["quarter"]).execute()
+                updated += 1
 
-                # Mapping kolom dari DataFrame ke tabel Supabase
-                column_mapping = {
-                    "nik" : "nik",
-                    "expert": "expert",       # kolom df → kolom Supabase
-                    "total_poin": "variation",      # kolom df → kolom Supabase
-                    "quarter": "quarter"
-                }
-                upload_df.rename(columns=column_mapping, inplace=True)
-
-                # Ubah ke list of dict
-                data_records = upload_df.to_dict(orient="records")
-
-                updated_count = 0
-                inserted_count = 0
-
-                # Loop per baris agar bisa cek apakah data sudah ada
-                for row in data_records:
-                    expert_nik = row["nik"]
-                    quarter_value = row["quarter"]
-                    variation_value = row["variation"]
-
-                    # Cek apakah kombinasi expert + quarter sudah ada di tabel
-                    existing = (
-                        supabase.table("calculated")
-                        .select("id")
-                        .eq("nik", expert_nik)
-                        .eq("quarter", quarter_value)
-                        .execute()
-                    )
-
-                    if existing.data:
-                        # Jika sudah ada → update kolom variation
-                        supabase.table("calculated").update({"variation": variation_value}).eq(
-                            "nik", expert_nik
-                        ).eq("quarter", quarter_value).execute()
-                        updated_count += 1
-                    else:
-                        # # Jika belum ada → insert data baru
-                        # supabase.table("calculated").insert(row).execute()
-                        inserted_count += 1
-
-                st.success(
-                    f"✅ {inserted_count} data baru disimpan dan {updated_count} data diperbarui di tabel 'calculated' untuk {quarter}"
-                )
-
+            st.success(f"✅ {updated} data diupdate untuk {quarter}")
+            st.rerun()
         except Exception as e:
-            st.error(f"❌ Gagal menyimpan ke database: {e}")
+            st.error(f"❌ Error: {e}")
+
+
+if __name__ == "__main__":
+    newVariation()

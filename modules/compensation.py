@@ -1,141 +1,248 @@
-import streamlit as st
 import pandas as pd
-import io
-from dbConfig import get_db_connection
-from google import genai
+import streamlit as st
 from dataManager import load_all_data
+from dbConfig import get_db_connection
 import locale
 
 try:
     locale.setlocale(locale.LC_ALL, 'id_ID.UTF-8')
 except locale.Error:
-    locale.setlocale(locale.LC_ALL, '') 
+    locale.setlocale(locale.LC_ALL, '')
 
-def compensation_page():
-    st.title("Compensation")
-    options = ["Upload file","From Data Base"]
+def compensation():
+    """
+    Menghitung Compensation berdasarkan 3 komponen score:
+    1. Learning Hour Score
+    2. Variation Score
+    3. Expert Level Score
+
+    Formula:
+    1. skor_akhir = (skor_lh ├ù param_lh + skor_variation ├ù param_variation + skor_expert ├ù param_expert) / 100
+    2. kompensasi = (skor_akhir / total_skor_akhir) ├ù budget
+
+    Dengan parameter yang bisa disesuaikan
+    """
+
+    supabase = get_db_connection()
+
+    st.title("≡ƒÆ░ Compensation Calculator")
+
+    # === LOAD DATA ===
+    options = ["From Data Base"]
     mode = st.pills("Data Resource", options, selection_mode="single", default="From Data Base")
-    if mode == "Upload file":   
-        st.header("📊 Upload File")
 
-        uploaded_files = st.file_uploader(
-            "Upload data (format Excel)", 
-            accept_multiple_files=True, 
-            type=["xls", "xlsx"]
-        )
-        # Simpan hasil upload ke session_state agar tidak hilang setelah interaksi
-        if uploaded_files:
-            st.session_state["combined_df"] = read_and_merge(uploaded_files)
-        # Ambil data dari session_state
-        combined_df = st.session_state.get("combined_df", pd.DataFrame())
-    elif mode == "From Data Base":
-        viewTable="calculated"
-        combined_df = load_all_data(viewTable)
+    viewTable = "calculated"
+    combined_df = load_all_data(viewTable)
+
     if combined_df.empty:
-        st.info("Tidak terdapat data")
-    else:
-        # st.success(f"✅ Data berhasil digabungkan ({len(combined_df)} baris total)")
-        st.dataframe(combined_df)
-        st.markdown("""
-                <style>
-                div[data-baseweb="tab-list"] {
-                    justify-content: space-between; /* Membagi tab secara merata */
-                    width: 100%;
-                }
-                button[data-baseweb="tab"] {
-                    flex: 1; /* Membuat tiap tab memiliki lebar sama */
-                    max-width: 100%;
-                }
-                </style>
-            """, unsafe_allow_html=True)
-    st.empty
+        st.info("Tidak terdapat data di tabel 'calculated'. Pastikan sudah menjalankan perhitungan Learning Hour, Variation, dan Expert Level terlebih dahulu.")
+        return None
 
-    # === Pilih Quarter terkini ===
-    quarter=["Q1", "Q2", "Q3", "Q4"]
-    quarter = st.pills("Pilih Quarter", quarter, selection_mode="single", default="Q1")
-    combined_df = combined_df[combined_df["quarter"]==quarter]
-    
-    st.header("Komponen Parameter")
-    param1, param2, param3 = st.columns(3)
-    
-    with param1:
-        paramLh = st.number_input(
-            "Kontribusi Learning Hour", value=70, placeholder="Type a number...", key="input_param1"
+    st.dataframe(combined_df)
+
+    # === FILTER QUARTER ===
+    quarters = ["Q1", "Q2", "Q3", "Q4"]
+    quarter = st.pills("Pilih Quarter", quarters, selection_mode="single", default="Q1")
+    combined_df = combined_df[combined_df["quarter"] == quarter]
+
+    # === PARAMETER SECTION ===
+    st.header("ΓÜÖ∩╕Å Komponen Parameter")
+
+    param_cols = st.columns(3)
+
+    with param_cols[0]:
+        param_lh = st.number_input(
+            "≡ƒôÜ Kontribusi Learning Hour (%)",
+            value=70,
+            min_value=0,
+            max_value=100,
+            key="input_param_lh"
         )
-        st.write("The default number is ", 70)
 
-    with param2:
-        paramVariasi = st.number_input(
-            "Variasi Penugasan", value=20, placeholder="Type a number...", key="input_param2"
+    with param_cols[1]:
+        param_variation = st.number_input(
+            "≡ƒöä Variasi Penugasan (%)",
+            value=20,
+            min_value=0,
+            max_value=100,
+            key="input_param_variation"
         )
-        st.write("The default number is ", 20)
 
-    with param3:
-        paramExpert = st.number_input(
-            "Level Expert", value=10, placeholder="Type a number...", key="input_param3"
+    with param_cols[2]:
+        param_expert = st.number_input(
+            "≡ƒæ¿ΓÇì≡ƒÆ╝ Level Expert (%)",
+            value=10,
+            min_value=0,
+            max_value=100,
+            key="input_param_expert"
         )
-        st.write("The default number is ", 10)
-    
-    colom1, colom2 = st.columns(2)
 
-    with colom1:
+    # Validasi total parameter
+    total_param = param_lh + param_variation + param_expert
+    if total_param != 100:
+        st.warning(f"ΓÜá∩╕Å Total parameter harus 100%, saat ini: {total_param}%")
+
+    # === KOMPENSASI & FILTER SECTION ===
+    comp_cols = st.columns(2)
+
+    with comp_cols[0]:
         st.header("Nominal Kompensasi")
-        nominal = st.number_input(
-            "Nominal Kompensasi (Rp)", value=None, placeholder="Masukkan nilai kompensasi...", key="input_param4"
+        budget = st.number_input(
+            "Nominal Kompensasi Total (Rp)",
+            value=None,
+            min_value=0,
+            placeholder="Masukkan total budget kompensasi...",
+            key="input_budget"
         )
-    with colom2:
-        st.header("Learning Hour Minimal")
-        mimimunLH = st.number_input(
-            "Besar Learning Hour Minimal Satu Triwulannya", value=10, placeholder="Masukkan nilai Learning Hour...", key="input_param5"
+
+    with comp_cols[1]:
+        st.header("Filter Learning Hour Minimal")
+        min_lh = st.number_input(
+            "Minimal Learning Hour per Quarter",
+            value=10,
+            min_value=0,
+            key="input_min_lh"
         )
-        combined_df = combined_df[combined_df["LH"]>=mimimunLH].copy()
 
-    st.header("Hasil Perhitungan")
-    
-    exclude_NIK = [860066, 910156, 730329]
-    # filter dataframe dengan exclude nama
-    on = st.toggle("Exclude EXMAN")
-    if on:
-        combined_df = combined_df[~combined_df["nik"].isin(exclude_NIK)]
-        st.write("Filter activated!")
-    
-    max_lh = combined_df["learning_hour"].max()    
-    max_variation = combined_df["variation"].max() 
-    max_exp = combined_df["expert_level"].max() 
-    combined_df["learning_hour_skor"] = (combined_df["learning_hour"]/max_lh)*100
-    combined_df["variation_skor"] = (combined_df["variation"]/max_variation)*100
-    combined_df["expert_level_skor"] = (combined_df["expert_level"]/max_exp)*100
+        # Filter data berdasarkan learning_hour minimal
+        if "learning_hour" in combined_df.columns:
+            combined_df = combined_df[combined_df["learning_hour"] >= min_lh].copy()
 
-    # --- Hitung skor per baris ---
-    combined_df["skor"] = (
-        combined_df["learning_hour_skor"] * (paramLh / 100)
-        + combined_df["variation_skor"] * (paramVariasi / 100)
-        + combined_df["expert_level_skor"] * (paramExpert / 100)
+    # === EXCLUDE EXMAN ===
+    exclude_nik = [860066, 910156, 730329]
+    exclude_toggle = st.toggle("Exclude EXMAN (Exclude NIK tertentu)", value=False)
+
+    if exclude_toggle:
+        combined_df = combined_df[~combined_df["nik"].isin(exclude_nik)].copy()
+        st.info("EXMAN telah dikecualikan dari perhitungan")
+
+    # === VALIDASI KOLOM ===
+    required_cols = ["nik", "expert", "learning_hour", "variation", "expert_level"]
+    missing_cols = [col for col in required_cols if col not in combined_df.columns]
+
+    if missing_cols:
+        st.error(f"Kolom yang hilang: {missing_cols}")
+        st.info(f"Data saat ini memiliki kolom: {combined_df.columns.tolist()}")
+        return None
+
+    # === STEP 1: PASTIKAN SEMUA KOLOM SCORE ADA DAN TIDAK NULL ===
+    for col in ["learning_hour", "variation", "expert_level"]:
+        if col not in combined_df.columns:
+            st.warning(f"Kolom '{col}' tidak ditemukan. Isi dengan 0.")
+            combined_df[col] = 0
+        combined_df[col] = combined_df[col].fillna(0)
+
+    # === STEP 2: HITUNG SKOR AKHIR ===
+    combined_df["skor_akhir"] = (
+        combined_df["learning_hour"] * (param_lh / 100) +
+        combined_df["variation"] * (param_variation / 100) +
+        combined_df["expert_level"] * (param_expert / 100)
     )
 
-    # --- Hitung kompensasi per baris (jika nominal diberikan) ---
-    if nominal:
-        total_skor = combined_df["skor"].sum()
-        combined_df["kompensasi"] = (combined_df["skor"] / total_skor) * nominal
+    # === STEP 3: HITUNG KOMPENSASI ===
+    if budget and budget > 0:
+        total_skor = combined_df["skor_akhir"].sum()
+
+        if total_skor > 0:
+            combined_df["kompensasi"] = (combined_df["skor_akhir"] / total_skor) * budget
+        else:
+            combined_df["kompensasi"] = 0
+            st.warning("ΓÜá∩╕Å Total skor adalah 0, tidak bisa menghitung kompensasi")
     else:
         combined_df["kompensasi"] = 0
+        st.info("Masukkan nominal kompensasi untuk melihat distribusi kompensasi")
 
-    # --- Format nilai Rupiah ---
+    # === FORMAT RUPIAH ===
     def format_rupiah(x):
         return f"Rp {x:,.0f}".replace(",", ".")
 
-    # Format kolom nominal dan kompensasi
-    formatted_df = combined_df.copy()
-    formatted_df["kompensasi (Rp)"] = formatted_df["kompensasi"].apply(format_rupiah)
-    
-    # Ringkasan hasil
-    if nominal:
-        st.success(f"✅ Total {len(combined_df)} baris data dihitung untuk {quarter} dengan total kompensasi {format_rupiah(nominal)}")
-    else:
-        st.info(f"ℹ️ Total {len(combined_df)} baris data dihitung untuk {quarter}, belum ada nominal kompensasi yang dimasukkan.")
-    
-    # --- 🧾 Tampilkan hasil ---
-    st.dataframe(
-        formatted_df[["nik", "expert", "LH", "learning_hour_skor", "variation_skor", "expert_level_skor", "skor", "kompensasi (Rp)"]],
-        use_container_width=True
-    )
+    # === RINGKASAN HASIL ===
+    st.header("Hasil Perhitungan Compensation")
+
+    summary_cols = st.columns(4)
+
+    with summary_cols[0]:
+        st.metric("Total Expert", len(combined_df), border=True)
+
+    with summary_cols[1]:
+        st.metric("Total Skor Akhir", f"{combined_df['skor_akhir'].sum():.2f}", border=True)
+
+    with summary_cols[2]:
+        if budget:
+            st.metric("Total Budget", format_rupiah(budget), border=True)
+        else:
+            st.metric("Total Budget", "Rp 0", border=True)
+
+    with summary_cols[3]:
+        if budget and len(combined_df) > 0:
+            avg_comp = combined_df["kompensasi"].sum() / len(combined_df)
+            st.metric("Rata-rata Kompensasi", format_rupiah(avg_comp), border=True)
+        else:
+            st.metric("Rata-rata Kompensasi", "Rp 0", border=True)
+
+    # === PREPARE DISPLAY DATAFRAME ===
+    display_df = combined_df.copy()
+    display_df["kompensasi (Rp)"] = display_df["kompensasi"].apply(format_rupiah)
+
+    # === TAMPILKAN DETAIL PERHITUNGAN ===
+    st.subheader("Detail Perhitungan Kompensasi per Expert")
+
+    display_cols = [
+        "nik", "expert", "learning_hour", "variation", "expert_level",
+        "skor_akhir", "kompensasi (Rp)"
+    ]
+
+    st.dataframe(display_df[display_cols], use_container_width=True)
+
+    # === TAMBAHAN: SUMMARY STATISTIK ===
+    st.subheader("Statistik Kompensasi")
+
+    stats_cols = st.columns(3)
+
+    with stats_cols[0]:
+        st.metric("Kompensasi Tertinggi",
+                 format_rupiah(combined_df["kompensasi"].max()) if budget else "Rp 0",
+                 border=True)
+
+    with stats_cols[1]:
+        st.metric("Kompensasi Terendah",
+                 format_rupiah(combined_df["kompensasi"].min()) if budget else "Rp 0",
+                 border=True)
+
+    with stats_cols[2]:
+        if budget and len(combined_df) > 0:
+            std_comp = combined_df["kompensasi"].std()
+            st.metric("Std Deviation Kompensasi",
+                     format_rupiah(std_comp),
+                     border=True)
+
+    # === DOWNLOAD EXCEL ===
+    if st.button("Download Hasil Kompensasi (Excel)", key="btn_download_comp"):
+        # Prepare download dataframe
+        download_df = display_df[[
+            "nik", "expert", "quarter",
+            "learning_hour", "variation", "expert_level",
+            "skor_akhir", "kompensasi"
+        ]].copy()
+
+        # Convert to Excel
+        import io
+        buffer = io.BytesIO()
+
+        with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+            download_df.to_excel(writer, sheet_name="Kompensasi", index=False)
+
+        buffer.seek(0)
+
+        st.download_button(
+            label="Download Kompensasi.xlsx",
+            data=buffer,
+            file_name=f"Kompensasi_{quarter}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+    return combined_df
+
+
+if __name__ == "__main__":
+    compensation()
