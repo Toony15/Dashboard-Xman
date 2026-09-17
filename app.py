@@ -2,7 +2,7 @@ import streamlit as st
 import os
 import pandas as pd
 from modules.learningHour import learningHour
-from modules.newVariation import newVariation
+from modules.variation import variation_page
 from modules.expertLevel import expertLevel
 from modules.compensation import compensation
 
@@ -266,7 +266,7 @@ elif selected_menu == "🔄 Variation Score":
         st.caption("*) Skor Parameter 3 = (Total Poin Expert / Total Poin Tertinggi) × 100  \n**) Minimal Total Poin Expert = 1.0")
     
     with tab2:
-        newVariation()
+        variation_page()
 
 elif selected_menu == "👨‍💼 Expert Level Score":
     expertLevel()

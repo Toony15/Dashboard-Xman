@@ -5,11 +5,23 @@ import re
 from dbConfig import get_db_connection
 from google import genai
 from dataManager import load_all_data
+from modules.lim1DataManager import (
+    try_detect_multi_expert_sheets,
+    build_lim1_combined_df,
+    render_expert_feedback_results,
+    uploadLim1,
+)
 
 def satisfaction_page():
     supabase = get_db_connection()
 
     def read_and_merge(files):
+        """
+        Parser untuk format LAMA (template manual): banyak blok 'LIM 1 - Nama Expert'
+        dalam satu file, header 'Question'/'Answer' persis di kolom E & F, ditutup
+        baris 'AVERAGE'. Dipakai sebagai FALLBACK untuk file yang tidak cocok format
+        baru (lihat try_detect_multi_expert_sheets di lim1DataManager.py).
+        """
         all_data = []
         for uploaded_file in files:
             try:
@@ -88,35 +100,116 @@ def satisfaction_page():
     if mode == "Upload file":
         st.header("Upload File")
 
+        # ------------------------------------------------------------
+        # Input manual: Nama Event & Quarter (ditempel ke tiap baris data
+        # hasil upload, bukan dideteksi otomatis dari isi file, karena
+        # file mentah dari sistem survey tidak selalu mencantumkan info ini).
+        # ------------------------------------------------------------
+        col_ev, col_q = st.columns([2, 1])
+        with col_ev:
+            event_name = st.text_input(
+                "Nama Event / Kegiatan",
+                placeholder="Contoh: Coaching Clinic Consultative Selling for Manager Batch 2"
+            )
+        with col_q:
+            selected_quarter_upload = st.selectbox("Quarter kegiatan ini", ["Q1", "Q2", "Q3", "Q4"])
+
         uploaded_files = st.file_uploader(
             "Upload data (format Excel)",
             accept_multiple_files=True,
             type=["xls", "xlsx"]
         )
-        # Simpan hasil upload ke session_state agar tidak hilang setelah interaksi
-        if uploaded_files:
-            st.session_state["combined_df"] = read_and_merge(uploaded_files)
+
+        if uploaded_files and not event_name:
+            st.warning("⚠️ Isi dulu Nama Event sebelum file diproses.")
+        elif uploaded_files and event_name:
+            # 1) Coba format BARU dulu: 1 sheet = 1 expert, kolom NIK/Name/Question/Answer
+            sheets, remaining_files = try_detect_multi_expert_sheets(uploaded_files)
+            st.session_state["lim1_sheets"] = sheets
+            new_format_df = build_lim1_combined_df(sheets, event_name, selected_quarter_upload)
+
+            # 2) File yang tidak cocok format baru, coba format LAMA (template manual) sebagai fallback
+            old_format_df = pd.DataFrame()
+            if remaining_files:
+                old_format_df = read_and_merge(remaining_files)
+                if not old_format_df.empty:
+                    # Event & Quarter tetap pakai input manual user, supaya konsisten
+                    # dengan file format baru (menimpa hasil ekstraksi otomatis dari nama file lama)
+                    old_format_df["Event"] = event_name
+                    old_format_df["Quarter"] = selected_quarter_upload
+
+            st.session_state["combined_df"] = pd.concat(
+                [new_format_df, old_format_df], ignore_index=True
+            )
+
+            if len(sheets):
+                st.success(f"✅ {len(sheets)} sheet expert terdeteksi (format baru).")
+            if remaining_files and not old_format_df.empty:
+                st.info(f"ℹ️ {len(remaining_files)} file diproses dengan format lama (template manual).")
+            if remaining_files and old_format_df.empty:
+                st.warning(
+                    f"⚠️ {len(remaining_files)} file tidak dikenali di kedua format yang didukung: "
+                    + ", ".join(f.name for f in remaining_files)
+                )
+
         # Ambil data dari session_state
         combined_df = st.session_state.get("combined_df", pd.DataFrame())
+        sheets = st.session_state.get("lim1_sheets", {})
+
+        # ------------------------------------------------------------
+        # Dashboard per-expert (Ringkasan / Detail per Expert / Data Mentah),
+        # gaya prototype 'Expert Feedback Analyzer' standalone
+        # ------------------------------------------------------------
+        if sheets:
+            st.markdown("---")
+            render_expert_feedback_results(sheets)
+
+        # ------------------------------------------------------------
+        # Tombol Simpan ke Database
+        # ------------------------------------------------------------
+        if not combined_df.empty:
+            st.markdown("---")
+            st.subheader("💾 Simpan ke Database")
+            st.caption(
+                "Pastikan hasil parsing di atas sudah benar sebelum disimpan. "
+                "Data akan masuk ke tabel 'learningImpact1' di Supabase."
+            )
+            if st.button("Simpan ke Database", type="primary"):
+                to_upload = combined_df.copy().reset_index(drop=True)
+                # NOTE: kolom 'id' di bawah ini dibuat manual (belum tentu cocok dengan
+                # skema asli tabel 'learningImpact1' di Supabase - tabel ini sempat
+                # error "tidak ditemukan" saat dicoba. Mohon dicek/dibuat dulu skema
+                # tabelnya: id, Email, Event, Question, Answer, Expert, Unit, Quarter.
+                to_upload["id"] = (
+                    to_upload.index.astype(str) + "_" +
+                    to_upload["Event"].astype(str) + "_" +
+                    to_upload["Expert"].astype(str)
+                )
+                uploadLim1(to_upload, "learningImpact1", supabase, True)
+
+        if not sheets and combined_df.empty:
+            st.info("Tidak terdapat data")
+
     elif mode == "From Data Base":
         viewTable = "learningImpact1"
         combined_df = load_all_data(viewTable)
-    if combined_df.empty:
-        st.info("Tidak terdapat data")
-    else:
-        options = ["Q1", "Q2", "Q3", "Q4"]
-        default_selection = options
-        selectedQuarter = st.pills("Select Quarter", options, selection_mode="multi", default=default_selection)
 
-        combined_df = combined_df[combined_df["Quarter"].isin(selectedQuarter)]
-        combined_df["Answer_Numeric"] = pd.to_numeric(combined_df["Answer"], errors="coerce")
-        # st.success(f"✅ Data berhasil digabungkan ({len(combined_df)} baris total)")
-        st.dataframe(combined_df)
-        st.markdown("""
-                <style>
-                div[data-baseweb="tab-list"] {
-                    justify-content: space-between; /* Membagi tab secara merata */
-                    width: 100%;
+        if combined_df.empty:
+            st.info("Tidak terdapat data")
+        else:
+            options = ["Q1", "Q2", "Q3", "Q4"]
+            default_selection = options
+            selectedQuarter = st.pills("Select Quarter", options, selection_mode="multi", default=default_selection)
+            combined_df = combined_df[combined_df["Quarter"].isin(selectedQuarter)]
+
+            combined_df["Answer_Numeric"] = pd.to_numeric(combined_df["Answer"], errors="coerce")
+            # st.success(f"✅ Data berhasil digabungkan ({len(combined_df)} baris total)")
+            st.dataframe(combined_df)
+            st.markdown("""
+                    <style>
+                    div[data-baseweb="tab-list"] {
+                        justify-content: space-between; /* Membagi tab secara merata */
+                        width: 100%;
                 }
                 button[data-baseweb="tab"] {
                     flex: 1; /* Membuat tiap tab memiliki lebar sama */
@@ -124,371 +217,373 @@ def satisfaction_page():
                 }
                 </style>
             """, unsafe_allow_html=True)
-        tab1, tab2 = st.tabs(["Overview", "Detail"])
+            tab1, tab2 = st.tabs(["Overview", "Detail"])
 
-        # ==========================================================
-        # DETAIL
-        # ==========================================================
+            # ==========================================================
+            # DETAIL
+            # ==========================================================
 
-        with tab2:
-            st.subheader("Pilih Event untuk Ditampilkan")
+            with tab2:
+                st.subheader("Pilih Event untuk Ditampilkan")
 
-            # Ambil daftar event unik
-            unique_events = sorted([e for e in combined_df["Event"].unique() if e.strip() != ""])
+                # Ambil daftar event unik
+                unique_events = sorted([e for e in combined_df["Event"].unique() if e.strip() != ""])
 
-            if not unique_events:
-                st.warning("Tidak ditemukan nama Event. Pastikan nama file memiliki format 'event_expert_unit'.")
-            else:
-                # Selectbox untuk memilih satu event
-                selected_event = st.selectbox(
-                    "Pilih Event:",
-                    options=unique_events,
-                    index=0,
-                    help="Pilih satu event untuk menampilkan datanya"
-                )
-
-                # Filter dataframe sesuai event yang dipilih
-                filtered_df = combined_df[combined_df["Event"] == selected_event]
-
-                st.markdown(f"### Data untuk Event: `{selected_event}` ({len(filtered_df)} baris)")
-                st.dataframe(filtered_df)
-
-                # --- 🔍 Rekap Umum Sebelum Dataframe Detail ---
-                qtext_col = "Question"
-                answer_col = "Answer"
-                expert_col = "Expert"
-
-                # Pastikan kolom ada
-                if not all(col in filtered_df.columns for col in [qtext_col, answer_col, expert_col]):
-                    st.warning("Beberapa kolom yang dibutuhkan tidak ditemukan (Pastikan ada kolom Question ID, Question, Answer, dan Expert).")
+                if not unique_events:
+                    st.warning("Tidak ditemukan nama Event. Pastikan nama file memiliki format 'event_expert_unit'.")
                 else:
-                    # Bersihkan nilai numeric
-                    temp_df = filtered_df.copy()
-                    temp_df[answer_col] = (
-                        temp_df[answer_col]
-                        .astype(str)
-                        .str.replace(",", ".")
-                        .str.replace(r"\s+", "", regex=True)
+                    # Selectbox untuk memilih satu event
+                    selected_event = st.selectbox(
+                        "Pilih Event:",
+                        options=unique_events,
+                        index=0,
+                        help="Pilih satu event untuk menampilkan datanya"
                     )
 
-                    # Deteksi numeric
-                    temp_df["is_numeric"] = pd.to_numeric(temp_df[answer_col], errors="coerce").notna()
-                    numeric_df = temp_df[temp_df["is_numeric"]].copy()
-                    numeric_df[answer_col] = pd.to_numeric(numeric_df[answer_col], errors="coerce")
+                    # Filter dataframe sesuai event yang dipilih
+                    filtered_df = combined_df[combined_df["Event"] == selected_event]
 
-                    st.markdown("## Rekap Umum")
+                    st.markdown(f"### Data untuk Event: `{selected_event}` ({len(filtered_df)} baris)")
+                    st.dataframe(filtered_df)
 
-                    # --- Table 1: Rata-rata per Expert ---
-                    if not numeric_df.empty:
-                        rekap_expert = numeric_df.groupby(expert_col, as_index=False)[answer_col].mean()
-                        rekap_expert["AVERAGE"] = rekap_expert[answer_col] * 10
-                        rekap_expert = rekap_expert.rename(columns={expert_col: "NAMA"})[["NAMA", "AVERAGE"]]
+                    # --- 🔍 Rekap Umum Sebelum Dataframe Detail ---
+                    qtext_col = "Question"
+                    answer_col = "Answer"
+                    expert_col = "Expert"
 
-                        st.markdown("### Rata-rata Nilai per Expert")
-                        st.dataframe(rekap_expert, use_container_width=True)
+                    # Pastikan kolom ada
+                    if not all(col in filtered_df.columns for col in [qtext_col, answer_col, expert_col]):
+                        st.warning("Beberapa kolom yang dibutuhkan tidak ditemukan (Pastikan ada kolom Question ID, Question, Answer, dan Expert).")
                     else:
-                        st.info("Tidak ada data numerik untuk menghitung rata-rata per expert.")
+                        # Bersihkan nilai numeric
+                        temp_df = filtered_df.copy()
+                        temp_df[answer_col] = (
+                            temp_df[answer_col]
+                            .astype(str)
+                            .str.replace(",", ".")
+                            .str.replace(r"\s+", "", regex=True)
+                        )
 
-                    # --- Table 2: Rata-rata per Pertanyaan (semua expert digabung) ---
-                    if not numeric_df.empty:
-                        rekap_question = numeric_df.groupby(qtext_col, as_index=False)[answer_col].mean()
-                        rekap_question["NILAI ALL"] = rekap_question[answer_col] * 10
-                        rekap_question = rekap_question.rename(columns={qtext_col: "PERTANYAAN UBPP STRUKTUR"})[
-                            ["PERTANYAAN UBPP STRUKTUR", "NILAI ALL"]
-                        ]
+                        # Deteksi numeric
+                        temp_df["is_numeric"] = pd.to_numeric(temp_df[answer_col], errors="coerce").notna()
+                        numeric_df = temp_df[temp_df["is_numeric"]].copy()
+                        numeric_df[answer_col] = pd.to_numeric(numeric_df[answer_col], errors="coerce")
 
-                        st.markdown("### Rata-rata Nilai per Pertanyaan (Semua Expert)")
-                        st.dataframe(rekap_question, use_container_width=True)
+                        st.markdown("## Rekap Umum")
+
+                        # --- Table 1: Rata-rata per Expert ---
+                        if not numeric_df.empty:
+                            rekap_expert = numeric_df.groupby(expert_col, as_index=False)[answer_col].mean()
+                            rekap_expert["AVERAGE"] = rekap_expert[answer_col] * 10
+                            rekap_expert = rekap_expert.rename(columns={expert_col: "NAMA"})[["NAMA", "AVERAGE"]]
+
+                            st.markdown("### Rata-rata Nilai per Expert")
+                            st.dataframe(rekap_expert, use_container_width=True)
+                        else:
+                            st.info("Tidak ada data numerik untuk menghitung rata-rata per expert.")
+
+                        # --- Table 2: Rata-rata per Pertanyaan (semua expert digabung) ---
+                        if not numeric_df.empty:
+                            rekap_question = numeric_df.groupby(qtext_col, as_index=False)[answer_col].mean()
+                            rekap_question["NILAI ALL"] = rekap_question[answer_col] * 10
+                            rekap_question = rekap_question.rename(columns={qtext_col: "PERTANYAAN UBPP STRUKTUR"})[
+                                ["PERTANYAAN UBPP STRUKTUR", "NILAI ALL"]
+                            ]
+
+                            st.markdown("### Rata-rata Nilai per Pertanyaan (Semua Expert)")
+                            st.dataframe(rekap_question, use_container_width=True)
+                        else:
+                            st.info("Tidak ada data numerik untuk menghitung rata-rata per pertanyaan.")
+
+                        st.markdown("---")
+
+                    #--- Tampilkan data per Expert ---
+                    st.markdown("## Rekap per Expert")
+                    # --- Table 3: Rekap skor expert seluruh event ---
+                    st.subheader("Table 3: Rekap Skor Expert seluruh event")
+                    # ===== 🧠 FILTER EXPERT =====
+                    experts = sorted(filtered_df["Expert"].dropna().unique())
+                    # 🔹 Checkbox untuk memilih semua expert
+                    select_all = st.checkbox("Pilih Semua Expert")
+
+                    # 🔹 Jika dicentang, semua expert otomatis dipilih
+                    if select_all:
+                        selected_experts = st.multiselect("👤 Pilih Expert", options=experts, default=experts)
+                    else:
+                        selected_experts = st.multiselect("👤 Pilih Expert", options=experts, default=experts[:1])
+
+                    # Jika tidak ada expert dipilih, tampilkan peringatan
+                    if not selected_experts:
+                        st.warning("⚠️ Silakan pilih minimal satu expert untuk ditampilkan.")
+                    else:
+                        # Loop untuk setiap expert yang dipilih
+                        for expert in selected_experts:
+                            st.markdown(f"### 👤 Expert: **{expert}**")
+
+                            # Filter berdasarkan expert
+                            filtered_df = combined_df[combined_df["Expert"] == expert].copy()
+                            numeric_df = filtered_df.dropna(subset=["Answer_Numeric"]).copy()
+
+                            # Hitung rata-rata nilai per pertanyaan
+                            avg_per_question = (
+                                numeric_df.groupby("Question")["Answer_Numeric"]
+                                .mean()
+                                .reset_index()
+                                .rename(columns={"Answer_Numeric": "Average_Score"})
+                            )
+
+                            # Kalikan dengan 10
+                            avg_per_question["Average_Score"] = avg_per_question["Average_Score"] * 10
+
+                            # ========== CONTAINER 1 (Per Expert) ==========
+                            with st.container():
+                                sec1, sec2 = st.columns([2, 1])
+
+                                # 📊 Tabel rata-rata per pertanyaan
+                                with sec1:
+                                    st.subheader("📊 Rata-rata Nilai per Pertanyaan (Numeric)")
+                                    st.dataframe(avg_per_question, use_container_width=True)
+
+                                # 🎯 Scorecard rata-rata keseluruhan
+                                overall_avg = avg_per_question["Average_Score"].mean()
+                                with sec2:
+                                    st.empty()
+                                    st.markdown(
+                                        f"""
+                                        <div style='text-align: center; padding: 20px; border-radius: 10px; background-color: #1f2937;'>
+                                            <h3 style='color: white;'>🎯 Rata-rata Skor Keseluruhan</h3>
+                                            <h1 style='color: #4CAF50;'>{overall_avg:.2f}</h1>
+                                        </div>
+                                        """,
+                                        unsafe_allow_html=True
+                                    )
+
+                            # Tambahkan garis pemisah antar expert
+                            st.markdown("---")
+            # =============================================================
+            # OVERVIEW
+            # =============================================================
+
+            with tab1:
+                # --- 📈 RESUME SECTION ---
+                st.markdown(
+                    """
+                    <h1 style='text-align: center;'>Overview</h1>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+                # --- Persiapan Data ---
+                resume_df = combined_df.copy()
+                resume_df["Answer_Clean"] = (
+                    resume_df["Answer"].astype(str)
+                    .str.replace(",", ".")
+                    .str.replace(r"\s+", "", regex=True)
+                )
+                resume_df["is_numeric"] = pd.to_numeric(resume_df["Answer_Clean"], errors="coerce").notna()
+                resume_df["Answer_Numeric"] = pd.to_numeric(resume_df["Answer_Clean"], errors="coerce")
+                grafik_df = combined_df[["Event", "Unit"]].copy()
+                event_count = grafik_df.groupby("Unit")["Event"].nunique().reset_index()
+                event_count.columns = ["unit", "jumlah_event"]
+                st.markdown(
+                    """
+                    <h2 style='text-align: center;'>Jumlah Pelatihan per Unit</h2>
+                    """,
+                    unsafe_allow_html=True
+                )
+                colA1, colA2 = st.columns(2)
+                with colA1:
+                # --- Grafik 1: Jumlah Pelatihan per Unit ---
+                    unit_count = resume_df.groupby("Unit", as_index=False)["Event"].nunique()
+                    unit_count = unit_count.rename(columns={"Event": "Jumlah Pelatihan"})
+
+                    st.bar_chart(event_count.set_index("unit")["jumlah_event"])
+                    # st.bar_chart(unit_count.set_index("Unit")["Jumlah Pelatihan"])
+                with colA2:
+                    # st.dataframe(unit_count, use_container_width=True)
+                    st.dataframe(event_count, use_container_width=True)
+                colB1, colB2 = st.columns(2)
+                with colB1:
+                    # --- Table 1: Nilai Rata-rata per Event ---
+                    st.subheader("🧾Nilai Rata-rata per Event")
+
+                    if resume_df["is_numeric"].any():
+                        table1 = (
+                            resume_df[resume_df["is_numeric"]]
+                            .groupby(["Event", "Unit"], as_index=False)["Answer_Numeric"]
+                            .mean()
+                        )
+                        table1["NILAI AVERAGE"] = table1["Answer_Numeric"] * 10
+                        table1 = table1.reset_index().rename(
+                            columns={
+                                "Event": "NAMA EVENT",
+                                "Unit": "UNIT"
+                            }
+                        )[["NAMA EVENT", "UNIT", "NILAI AVERAGE"]]
+
+                        st.dataframe(table1, use_container_width=True)
+                    else:
+                        st.info("Tidak ada data numerik untuk menghitung rata-rata per event.")
+                with colB2:
+                    # --- Table 2: Nilai Rata-rata per Pertanyaan ---
+                    st.subheader("🧩Nilai Rata-rata per Pertanyaan")
+
+                    if resume_df["is_numeric"].any():
+                        table2 = (
+                            resume_df[resume_df["is_numeric"]]
+                            .groupby("Question", as_index=False)["Answer_Numeric"]
+                            .mean()
+                        )
+                        table2["NILAI AVERAGE PERTANYAAN"] = table2["Answer_Numeric"] * 10
+                        table2 = table2.reset_index().rename(
+                            columns={
+                                "index": "NO",
+                                "Question": "PERTANYAAN UBPP"
+                            }
+                        )[["NO", "PERTANYAAN UBPP", "NILAI AVERAGE PERTANYAAN"]]
+
+                        st.dataframe(table2, use_container_width=True)
                     else:
                         st.info("Tidak ada data numerik untuk menghitung rata-rata per pertanyaan.")
 
-                    st.markdown("---")
-
-                #--- Tampilkan data per Expert ---
-                st.markdown("## Rekap per Expert")
                 # --- Table 3: Rekap skor expert seluruh event ---
                 st.subheader("Table 3: Rekap Skor Expert seluruh event")
-                # ===== 🧠 FILTER EXPERT =====
-                experts = sorted(filtered_df["Expert"].dropna().unique())
-                # 🔹 Checkbox untuk memilih semua expert
-                select_all = st.checkbox("Pilih Semua Expert")
+                numeric_df = resume_df[resume_df["is_numeric"]].copy()
+                # Hitung rata-rata skor per expert
+                avg_score_per_expert = (
+                    numeric_df.groupby("Expert")["Answer_Numeric"]
+                    .mean()
+                    .reset_index()
+                    .rename(columns={"Answer_Numeric": "Average_Score"})
+                )
 
-                # 🔹 Jika dicentang, semua expert otomatis dipilih
-                if select_all:
-                    selected_experts = st.multiselect("👤 Pilih Expert", options=experts, default=experts)
-                else:
-                    selected_experts = st.multiselect("👤 Pilih Expert", options=experts, default=experts[:1])
+                # Opsional: bulatkan dua angka di belakang koma
+                avg_score_per_expert["Average_Score"] = avg_score_per_expert["Average_Score"].round(3) * 10
 
-                # Jika tidak ada expert dipilih, tampilkan peringatan
-                if not selected_experts:
-                    st.warning("⚠️ Silakan pilih minimal satu expert untuk ditampilkan.")
-                else:
-                    # Loop untuk setiap expert yang dipilih
-                    for expert in selected_experts:
-                        st.markdown(f"### 👤 Expert: **{expert}**")
+                # Tampilkan hasil
+                st.dataframe(avg_score_per_expert)
 
-                        # Filter berdasarkan expert
-                        filtered_df = combined_df[combined_df["Expert"] == expert].copy()
-                        numeric_df = filtered_df.dropna(subset=["Answer_Numeric"]).copy()
+                # ===== 2️⃣ TABLE NON-NUMERIC =====
+                non_numeric_df = combined_df[combined_df["Answer_Numeric"].isna()].copy()
 
-                        # Hitung rata-rata nilai per pertanyaan
-                        avg_per_question = (
-                            numeric_df.groupby("Question")["Answer_Numeric"]
-                            .mean()
-                            .reset_index()
-                            .rename(columns={"Answer_Numeric": "Average_Score"})
-                        )
+                st.subheader("Rekap Jawaban Non-Numeric")
+                st.dataframe(non_numeric_df, use_container_width=True)
 
-                        # Kalikan dengan 10
-                        avg_per_question["Average_Score"] = avg_per_question["Average_Score"] * 10
+                # --- Table 4: Rekap Pertanyaan Deskriptif per Event ---
+                # st.subheader("Table 4: Rekap Pertanyaan Deskriptif per Event")
 
-                        # ========== CONTAINER 1 (Per Expert) ==========
-                        with st.container():
-                            sec1, sec2 = st.columns([2, 1])
-
-                            # 📊 Tabel rata-rata per pertanyaan
-                            with sec1:
-                                st.subheader("📊 Rata-rata Nilai per Pertanyaan (Numeric)")
-                                st.dataframe(avg_per_question, use_container_width=True)
-
-                            # 🎯 Scorecard rata-rata keseluruhan
-                            overall_avg = avg_per_question["Average_Score"].mean()
-                            with sec2:
-                                st.empty()
-                                st.markdown(
-                                    f"""
-                                    <div style='text-align: center; padding: 20px; border-radius: 10px; background-color: #1f2937;'>
-                                        <h3 style='color: white;'>🎯 Rata-rata Skor Keseluruhan</h3>
-                                        <h1 style='color: #4CAF50;'>{overall_avg:.2f}</h1>
-                                    </div>
-                                    """,
-                                    unsafe_allow_html=True
-                                )
-
-                        # Tambahkan garis pemisah antar expert
-                        st.markdown("---")
-        # =============================================================
-        # OVERVIEW
-        # =============================================================
-
-        with tab1:
-            # --- 📈 RESUME SECTION ---
-            st.markdown(
-                """
-                <h1 style='text-align: center;'>Overview</h1>
-                """,
-                unsafe_allow_html=True
-            )
-
-            # --- Persiapan Data ---
-            resume_df = combined_df.copy()
-            resume_df["Answer_Clean"] = (
-                resume_df["Answer"].astype(str)
-                .str.replace(",", ".")
-                .str.replace(r"\s+", "", regex=True)
-            )
-            resume_df["is_numeric"] = pd.to_numeric(resume_df["Answer_Clean"], errors="coerce").notna()
-            resume_df["Answer_Numeric"] = pd.to_numeric(resume_df["Answer_Clean"], errors="coerce")
-            grafik_df = combined_df[["Event", "Unit"]].copy()
-            event_count = grafik_df.groupby("Unit")["Event"].nunique().reset_index()
-            event_count.columns = ["unit", "jumlah_event"]
-            st.markdown(
-                """
-                <h2 style='text-align: center;'>Jumlah Pelatihan per Unit</h2>
-                """,
-                unsafe_allow_html=True
-            )
-            colA1, colA2 = st.columns(2)
-            with colA1:
-            # --- Grafik 1: Jumlah Pelatihan per Unit ---
-                unit_count = resume_df.groupby("Unit", as_index=False)["Event"].nunique()
-                unit_count = unit_count.rename(columns={"Event": "Jumlah Pelatihan"})
-
-                st.bar_chart(event_count.set_index("unit")["jumlah_event"])
-                # st.bar_chart(unit_count.set_index("Unit")["Jumlah Pelatihan"])
-            with colA2:
-                # st.dataframe(unit_count, use_container_width=True)
-                st.dataframe(event_count, use_container_width=True)
-            colB1, colB2 = st.columns(2)
-            with colB1:
-                # --- Table 1: Nilai Rata-rata per Event ---
-                st.subheader("🧾Nilai Rata-rata per Event")
-
-                if resume_df["is_numeric"].any():
-                    table1 = (
-                        resume_df[resume_df["is_numeric"]]
-                        .groupby(["Event", "Unit"], as_index=False)["Answer_Numeric"]
-                        .mean()
-                    )
-                    table1["NILAI AVERAGE"] = table1["Answer_Numeric"] * 10
-                    table1 = table1.reset_index().rename(
-                        columns={
-                            "Event": "NAMA EVENT",
-                            "Unit": "UNIT"
-                        }
-                    )[["NAMA EVENT", "UNIT", "NILAI AVERAGE"]]
-
-                    st.dataframe(table1, use_container_width=True)
-                else:
-                    st.info("Tidak ada data numerik untuk menghitung rata-rata per event.")
-            with colB2:
-                # --- Table 2: Nilai Rata-rata per Pertanyaan ---
-                st.subheader("🧩Nilai Rata-rata per Pertanyaan")
-
-                if resume_df["is_numeric"].any():
-                    table2 = (
-                        resume_df[resume_df["is_numeric"]]
-                        .groupby("Question", as_index=False)["Answer_Numeric"]
-                        .mean()
-                    )
-                    table2["NILAI AVERAGE PERTANYAAN"] = table2["Answer_Numeric"] * 10
-                    table2 = table2.reset_index().rename(
+                text_df = resume_df[~resume_df["is_numeric"]].copy()
+                if not text_df.empty:
+                    table3 = text_df.reset_index().rename(
                         columns={
                             "index": "NO",
-                            "Question": "PERTANYAAN UBPP"
+                            "Event": "NAMA EVENT",
+                            "Question": "PERTANYAAN UBPP",
+                            "Answer": "NILAI PERTANYAAN"
                         }
-                    )[["NO", "PERTANYAAN UBPP", "NILAI AVERAGE PERTANYAAN"]]
+                    )[["NO", "NAMA EVENT", "PERTANYAAN UBPP", "NILAI PERTANYAAN"]]
 
-                    st.dataframe(table2, use_container_width=True)
+                    # Simpan seluruh isi kolom NILAI PERTANYAAN ke variabel Python
+                    nilai_pertanyaan_list = table3["NILAI PERTANYAAN"].tolist()
+
+                    # st.dataframe(table3, use_container_width=True)
+
+                    # Debug info (bisa dihapus nanti)
+                    st.write("📦 Jumlah Nilai Pertanyaan yang Disimpan:", len(nilai_pertanyaan_list))
                 else:
-                    st.info("Tidak ada data numerik untuk menghitung rata-rata per pertanyaan.")
+                    st.info("Tidak ada data deskriptif untuk ditampilkan pada tabel ini.")
 
-            # --- Table 3: Rekap skor expert seluruh event ---
-            st.subheader("Table 3: Rekap Skor Expert seluruh event")
-            numeric_df = resume_df[resume_df["is_numeric"]].copy()
-            # Hitung rata-rata skor per expert
-            avg_score_per_expert = (
-                numeric_df.groupby("Expert")["Answer_Numeric"]
-                .mean()
-                .reset_index()
-                .rename(columns={"Answer_Numeric": "Average_Score"})
-            )
+                # --- Simpan jawaban deskriptif dari seluruh event ---
+                text_df_all = combined_df[pd.to_numeric(combined_df["Answer"], errors="coerce").isna()].copy()
+                nilai_pertanyaan_list = text_df_all["Answer"].dropna().astype(str).tolist()
 
-            # Opsional: bulatkan dua angka di belakang koma
-            avg_score_per_expert["Average_Score"] = avg_score_per_expert["Average_Score"].round(3) * 10
+                st.markdown("### Resume Otomatis (dari Jawaban Deskriptif)")
 
-            # Tampilkan hasil
-            st.dataframe(avg_score_per_expert)
+                # Resume Gemini (data yang sudah tersimpan di database)
+                st.write(f"Jumlah total jawaban deskriptif: {len(nilai_pertanyaan_list)}")
 
-            # ===== 2️⃣ TABLE NON-NUMERIC =====
-            non_numeric_df = combined_df[combined_df["Answer_Numeric"].isna()].copy()
+                if st.button("🔍 Buat Resume dengan Gemini API"):
+                    if not nilai_pertanyaan_list:
+                        st.warning("Tidak ada data teks untuk diringkas.")
+                    else:
+                        st.info("⏳ Mengirim data ke Gemini API untuk membuat ringkasan...")
+                        # Simpan dulu ke session_state agar bisa diakses nanti
+                        st.session_state["nilai_pertanyaan_list"] = nilai_pertanyaan_list
+                        st.success("✅ Data berhasil disiapkan untuk dikirim ke Gemini API.")
+                    # konfigurasi
+                    client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
 
-            st.subheader("Rekap Jawaban Non-Numeric")
-            st.dataframe(non_numeric_df, use_container_width=True)
+                    if "nilai_pertanyaan_list" in st.session_state:
+                        data_text = "\n".join(st.session_state["nilai_pertanyaan_list"])
+                        prompt = f"""
+                        Lakukan analisis data berikut dengan mengikuti instruksi proses secara ketat dan berurutan.
+                        Anda harus mematuhi seluruh langkah analisis, struktur output, dan gaya penulisan di bawah ini.
 
-            # --- Table 4: Rekap Pertanyaan Deskriptif per Event ---
-            # st.subheader("Table 4: Rekap Pertanyaan Deskriptif per Event")
+                        ======================
+                        PROSES ANALISIS DATA
+                        ======================
 
-            text_df = resume_df[~resume_df["is_numeric"]].copy()
-            if not text_df.empty:
-                table3 = text_df.reset_index().rename(
-                    columns={
-                        "index": "NO",
-                        "Event": "NAMA EVENT",
-                        "Question": "PERTANYAAN UBPP",
-                        "Answer": "NILAI PERTANYAAN"
-                    }
-                )[["NO", "NAMA EVENT", "PERTANYAAN UBPP", "NILAI PERTANYAAN"]]
+                        1. IDENTIFIKASI INTI INFORMASI
+                        - Baca seluruh data dan temukan pola umum: tema, kecenderungan, dan fokus umpan balik.
+                        - Kelompokkan isi ke dalam dua kategori besar: (a) aspek positif, (b) area perbaikan.
 
-                # Simpan seluruh isi kolom NILAI PERTANYAAN ke variabel Python
-                nilai_pertanyaan_list = table3["NILAI PERTANYAAN"].tolist()
+                        2. EKSTRAKSI INSIGHT
+                        - Dari kategori positif, ambil 5 poin paling kuat yang benar-benar mewakili kekuatan utama.
+                        - Dari kategori perbaikan, ambil 4 poin paling relevan untuk pengembangan.
+                        - Sintesis insight: tidak boleh menyalin teks mentah, tetapi mengolahnya menjadi kalimat analitis.
 
-                # st.dataframe(table3, use_container_width=True)
+                        3. PENILAIAN KRITIS
+                        - Tinjau konsistensi antar poin dan pastikan masing-masing adalah temuan unik, bukan duplikasi.
+                        - Susun insight sehingga mengalir dari yang paling fundamental ke yang bersifat teknis.
 
-                # Debug info (bisa dihapus nanti)
-                st.write("📦 Jumlah Nilai Pertanyaan yang Disimpan:", len(nilai_pertanyaan_list))
-            else:
-                st.info("Tidak ada data deskriptif untuk ditampilkan pada tabel ini.")
+                        4. FORMULASI OUTPUT
+                        - Hasil akhir wajib mengikuti format berikut:
 
-            # --- Simpan jawaban deskriptif dari seluruh event ---
-            text_df_all = combined_df[pd.to_numeric(combined_df["Answer"], errors="coerce").isna()].copy()
-            nilai_pertanyaan_list = text_df_all["Answer"].dropna().astype(str).tolist()
+                        ======================
+                        FORMAT OUTPUT WAJIB
+                        ======================
 
-            st.markdown("### Resume Otomatis (dari Jawaban Deskriptif)")
+                        Judul 1: **Apresiasi**
+                        Tampilkan minimal 5 poin bernomor.
+                        Setiap poin harus memenuhi format:
+                        - Dimulai dengan frasa kunci yang ditebalkan (**…**) sebagai highlight insight.
+                        - Dilanjutkan 1–2 kalimat evaluatif yang ringkas, profesional, dan langsung ke inti.
+                        - Maksimal 100 kata per poin.
 
-            st.write(f"Jumlah total jawaban deskriptif: {len(nilai_pertanyaan_list)}")
+                        Judul 2: **Saran**
+                        Tampilkan minimal 5 poin bernomor.
+                        Setiap poin menggunakan format yang sama:
+                        - Frasa kunci ditebalkan (**…**).
+                        - Diikuti penjelasan 1–2 kalimat yang bersifat korektif atau pengembangan.
 
-            if st.button("🔍 Buat Resume dengan Gemini API"):
-                if not nilai_pertanyaan_list:
-                    st.warning("Tidak ada data teks untuk diringkas.")
-                else:
-                    st.info("⏳ Mengirim data ke Gemini API untuk membuat ringkasan...")
-                    # Simpan dulu ke session_state agar bisa diakses nanti
-                    st.session_state["nilai_pertanyaan_list"] = nilai_pertanyaan_list
-                    st.success("✅ Data berhasil disiapkan untuk dikirim ke Gemini API.")
-                # konfigurasi
-                client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
+                        ======================
+                        GAYA PENULISAN
+                        ======================
+                        - Gunakan bahasa formal, manajerial, objektif, dan mudah dipahami.
+                        - Tidak menggunakan kata yang bertele-tele.
+                        - Fokus pada insight, bukan deskripsi ulang.
+                        - Hindari jargon teknis berlebihan.
+                        - Panjang keseluruhan harus padat namun komprehensif.
 
-                if "nilai_pertanyaan_list" in st.session_state:
-                    data_text = "\n".join(st.session_state["nilai_pertanyaan_list"])
-                    prompt = f"""
-                    Lakukan analisis data berikut dengan mengikuti instruksi proses secara ketat dan berurutan.
-                    Anda harus mematuhi seluruh langkah analisis, struktur output, dan gaya penulisan di bawah ini.
+                        ======================
+                        DATA YANG DIANALISIS
+                        ======================
+                        {data_text}
 
-                    ======================
-                    PROSES ANALISIS DATA
-                    ======================
+                        """
 
-                    1. IDENTIFIKASI INTI INFORMASI
-                    - Baca seluruh data dan temukan pola umum: tema, kecenderungan, dan fokus umpan balik.
-                    - Kelompokkan isi ke dalam dua kategori besar: (a) aspek positif, (b) area perbaikan.
+                        response = client.models.generate_content(
+                            model="gemini-3.6-flash",
+                            contents=prompt
+                        )
 
-                    2. EKSTRAKSI INSIGHT
-                    - Dari kategori positif, ambil 5 poin paling kuat yang benar-benar mewakili kekuatan utama.
-                    - Dari kategori perbaikan, ambil 4 poin paling relevan untuk pengembangan.
-                    - Sintesis insight: tidak boleh menyalin teks mentah, tetapi mengolahnya menjadi kalimat analitis.
-
-                    3. PENILAIAN KRITIS
-                    - Tinjau konsistensi antar poin dan pastikan masing-masing adalah temuan unik, bukan duplikasi.
-                    - Susun insight sehingga mengalir dari yang paling fundamental ke yang bersifat teknis.
-
-                    4. FORMULASI OUTPUT
-                    - Hasil akhir wajib mengikuti format berikut:
-
-                    ======================
-                    FORMAT OUTPUT WAJIB
-                    ======================
-
-                    Judul 1: **Apresiasi**
-                    Tampilkan minimal 5 poin bernomor.
-                    Setiap poin harus memenuhi format:
-                    - Dimulai dengan frasa kunci yang ditebalkan (**…**) sebagai highlight insight.
-                    - Dilanjutkan 1–2 kalimat evaluatif yang ringkas, profesional, dan langsung ke inti.
-                    - Maksimal 100 kata per poin.
-
-                    Judul 2: **Saran**
-                    Tampilkan minimal 5 poin bernomor.
-                    Setiap poin menggunakan format yang sama:
-                    - Frasa kunci ditebalkan (**…**).
-                    - Diikuti penjelasan 1–2 kalimat yang bersifat korektif atau pengembangan.
-
-                    ======================
-                    GAYA PENULISAN
-                    ======================
-                    - Gunakan bahasa formal, manajerial, objektif, dan mudah dipahami.
-                    - Tidak menggunakan kata yang bertele-tele.
-                    - Fokus pada insight, bukan deskripsi ulang.
-                    - Hindari jargon teknis berlebihan.
-                    - Panjang keseluruhan harus padat namun komprehensif.
-
-                    ======================
-                    DATA YANG DIANALISIS
-                    ======================
-                    {data_text}
-
-                    """
-
-                    response = client.models.generate_content(
-                        model="gemini-3.6-flash",
-                        contents=prompt
-                    )
-
-                    st.markdown("### 📝 Resume dari Gemini")
-                    st.write(response.text)
-                else:
-                    st.warning("❗ Tidak ada data nilai_pertanyaan_list yang tersimpan. Pastikan Anda sudah menjalankan bagian Resume sebelumnya.")
+                        st.markdown("### 📝 Resume dari Gemini")
+                        st.write(response.text)
+                    else:
+                        st.warning("❗ Tidak ada data nilai_pertanyaan_list yang tersimpan. Pastikan Anda sudah menjalankan bagian Resume sebelumnya.")
 
                 # --- 📦 BAGIAN DOWNLOAD EXCEL ---
+                # (tetap tampil di kedua mode, tidak ikut di-gate seperti Resume Gemini)
                 st.markdown("---")
                 st.header("📥 Download Semua Data")
                 output = None
@@ -523,7 +618,7 @@ def satisfaction_page():
                             st.download_button(
                                 label="⬇️ Simpan File Excel",
                                 data=output.getvalue(),
-                                file_name=f"Rekap_Evaluasi_{selectedQuarter}.xlsx",
+                                file_name=f"Rekap_Evaluasi_{'-'.join(selectedQuarter)}.xlsx",
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
                 except Exception as e:

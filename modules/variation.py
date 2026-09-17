@@ -1,267 +1,426 @@
-import os
-import re
-import unicodedata
+import io
 
 import pandas as pd
+import plotly.express as px
 import streamlit as st
-
 from dataManager import load_all_data
-from google import genai
+from dbConfig import get_db_connection
 
-# bobot berdasarkan kata kunci (case-insensitive) - fallback jika tidak ada nilai eksplisit
-BOBOT_MAP = {
-    "coach": 1.5,
-    "mentor": 1.4,
-    "speaker": 1.3,
-    "teach": 1.2,
-    "content": 1.1,
-    "publikasi": 1.0,
-    "publication": 1.0,
-    "article": 1.0,
-    "self learning": 1.0
+CATEGORY_BOBOT = {
+    "Teaching": 1.5,
+    "Expert Insight (Pembicara)": 1.4,
+    "Learning Content Designer/Developer": 1.4,
+    "Coaching (Coach)": 1.3,
+    "Mentoring (Mentor)": 1.3,
+    "Penguji/Assessor": 1.3,
+}
+
+KATEGORI_ORDER = list(CATEGORY_BOBOT.keys())
+
+WEIGHT_GROUP = {
+    "Teaching": "Teaching",
+    "Expert Insight (Pembicara)": "Expert Insight (Pembicara)",
+    "Learning Content Designer/Developer": "Learning Content Designer/Developer",
+    "Coaching (Coach)": "Coaching/Mentoring",
+    "Mentoring (Mentor)": "Coaching/Mentoring",
+    "Penguji/Assessor": "Penguji/Assessor",
+}
+
+WEIGHT_GROUP_BOBOT = {
+    "Teaching": 1.5,
+    "Expert Insight (Pembicara)": 1.4,
+    "Learning Content Designer/Developer": 1.4,
+    "Coaching/Mentoring": 1.3,
+    "Penguji/Assessor": 1.3,
+}
+
+TOTAL_BOBOT_ASSIGNMENT = sum(WEIGHT_GROUP_BOBOT.values())  # = 6.9
+
+VARIASI_PERSEN = 30
+
+# Nilai mentah di kolom "activities" -> kategori tampilan (1:1, tidak digabung)
+ACTIVITY_TO_CATEGORY = {
+    "teaching": "Teaching",
+    "expert insight (pembicara)": "Expert Insight (Pembicara)",
+    "learning content designer/developer": "Learning Content Designer/Developer",
+    "coaching (coach)": "Coaching (Coach)",
+    "mentoring (mentor)": "Mentoring (Mentor)",
+    "penguji/assessor": "Penguji/Assessor",
 }
 
 
-def _find_col(df: pd.DataFrame, candidates):
+def _map_activity(raw_value):
+    if pd.isna(raw_value):
+        return None
+    return ACTIVITY_TO_CATEGORY.get(str(raw_value).strip().lower())
+
+
+def read_and_merge(files, quarter_upload):
     """
-    Find first column name in df that matches any candidate (exact or substring, case-insensitive).
-    Returns actual column name or None.
+    Parser file raw 'LH Recog/Request' (sheet 'direct,coe,self') - sama seperti
+    learningHour.py & expertLevel.py, karena memang sumber file mentahnya SAMA.
+    Di sini kita cuma butuh nik, expert (dari 'name'), dan activities.
     """
-    cols = {str(c).lower().strip(): c for c in df.columns}
-    for cand in candidates:
-        if not cand:
+    all_data = []
+
+    column_mapping = {
+        "nik": "nik",
+        "name": "expert",
+        "activities": "activities",
+    }
+
+    for uploaded_file in files:
+        try:
+            df = pd.read_excel(uploaded_file, sheet_name="direct,coe,self")
+        except ValueError:
+            xls = pd.ExcelFile(uploaded_file)
+            st.error(
+                f"Sheet 'direct,coe,self' tidak ditemukan di {uploaded_file.name}. "
+                f"Sheet yang tersedia: {xls.sheet_names}"
+            )
             continue
-        k = cand.lower().strip()
-        if k in cols:
-            return cols[k]
-    # fallback: substring match
-    for col in df.columns:
-        low = str(col).lower()
-        for cand in candidates:
-            if not cand:
-                continue
-            if cand.lower().strip() in low:
-                return col
-    return None
+        except Exception as e:
+            st.error(f"Gagal membaca file {uploaded_file.name}: {e}")
+            continue
+
+        df.columns = [str(c).strip().lower() for c in df.columns]
+
+        missing = [c for c in column_mapping if c not in df.columns]
+        if missing:
+            st.warning(f"Kolom berikut tidak ditemukan di {uploaded_file.name}: {missing}")
+            continue
+
+        df = df.rename(columns=column_mapping)
+        df["quarter"] = quarter_upload
+        all_data.append(df)
+
+    if all_data:
+        return pd.concat(all_data, ignore_index=True)
+    return pd.DataFrame()
 
 
-def _norm_text(s):
-    if pd.isna(s) or s is None:
-        return ""
-    s = str(s)
-    s = unicodedata.normalize("NFKD", s)
-    s = re.sub(r"[^\w\s]", " ", s)
-    s = re.sub(r"\s+", " ", s)
-    return s.strip().lower()
-
-
-def _assign_bobot_from_text(text):
+def compute_variasi_score(df):
     """
-    If text is numeric (e.g. '1.4' or '1,4') return float.
-    Else match keywords in BOBOT_MAP.
-    Default 1.0.
+    Hitung skor Variasi Penugasan per expert sesuai rumus resmi:
+
+    1. Untuk tiap expert, tentukan APAKAH dia PERNAH mengerjakan tiap satu dari 5
+       KELOMPOK BOBOT resmi minimal 1x - status ya/tidak (biner), BUKAN dihitung
+       berapa kali repetisinya (3x Teaching tetap dihitung 1x "pernah Teaching",
+       dan Coaching + Mentoring dianggap 1 kelompok yang sama).
+    2. n_frekuensi_expert = jumlah BOBOT dari kelompok-kelompok yang PERNAH
+       dikerjakan (masing-masing kelompok kontribusi bobotnya cuma sekali).
+    3. Variasi Score = (n_frekuensi_expert / TOTAL_BOBOT_ASSIGNMENT) x 30%
+
+    Catatan: kategori TAMPILAN (kolom 'kategori') tetap 6 jenis apa adanya di
+    Excel (Coaching & Mentoring terpisah). Hanya untuk perhitungan skor, mereka
+    dikelompokkan lewat WEIGHT_GROUP supaya tidak dihitung dobel.
+
+    Return: (summary per expert, detail kategori per expert [tampilan, 6 jenis],
+    list nilai activities yang tidak dikenali/tidak masuk kategori resmi)
     """
-    if text is None:
-        return 1.0
-    t = str(text).strip()
-    if t == "":
-        return 1.0
-    # numeric first
-    try:
-        return float(t.replace(",", "."))
-    except Exception:
-        pass
-    s = _norm_text(t)
-    for k, v in BOBOT_MAP.items():
-        if k in s:
-            return v
-    return 1.0
+    work = df.copy()
+    work["kategori"] = work["activities"].apply(_map_activity)
+    work["kelompok_bobot"] = work["kategori"].map(WEIGHT_GROUP)
+
+    unmapped_values = sorted(
+        work.loc[work["kategori"].isna() & work["activities"].notna(), "activities"]
+        .astype(str)
+        .unique()
+        .tolist()
+    )
+
+    mapped = work.dropna(subset=["kategori"])
+
+    # Detail per kategori TAMPILAN (6 jenis) - dipakai untuk tabel detail & chart
+    touched = (
+        mapped.groupby(["expert", "kategori"]).size().reset_index(name="jumlah_kejadian")
+    )
+    touched["bobot_kategori"] = touched["kategori"].map(CATEGORY_BOBOT)
+
+    # Detail per KELOMPOK BOBOT (5 kelompok) - khusus untuk hitung skor,
+    # supaya Coaching (Coach) + Mentoring (Mentor) tidak dihitung dobel
+    touched_group = (
+        mapped.groupby(["expert", "kelompok_bobot"])
+        .size()
+        .reset_index(name="jumlah_kejadian_kelompok")
+    )
+    touched_group["bobot_kelompok"] = touched_group["kelompok_bobot"].map(WEIGHT_GROUP_BOBOT)
+
+    summary = touched_group.groupby("expert", as_index=False).agg(
+        n_frekuensi_expert=("bobot_kelompok", "sum"),
+        jumlah_kategori_dikerjakan=("kelompok_bobot", "nunique"),
+    )
+    nik_per_expert = df.groupby("expert")["nik"].first().reset_index()
+    summary = summary.merge(nik_per_expert, on="expert", how="left")
+
+    summary["variasi_score"] = (
+        (summary["n_frekuensi_expert"] / TOTAL_BOBOT_ASSIGNMENT) * VARIASI_PERSEN
+    ).round(2)
+    summary = summary.sort_values("variasi_score", ascending=False).reset_index(drop=True)
+
+    return summary, touched, unmapped_values
+
+
+def build_individual_assignment_table(df, summary):
+    """
+    Bangun tabel detail per KEJADIAN assignment (bukan digabung/dihitung jumlahnya).
+
+    Urutan barisnya:
+    1. Expert diurutkan dari yang PALING BANYAK assignment ke yang PALING SEDIKIT
+       (bukan alfabetis/NIK), supaya expert paling aktif tampil paling atas.
+    2. Di dalam satu expert, kategori diurutkan sesuai urutan resmi di CATEGORY_BOBOT
+       (Teaching dulu, lalu Expert Insight, Learning Content, Coaching, Mentoring,
+       baru Penguji/Assessor).
+
+    Kolom yang disertakan di tiap baris:
+    - Bobot Assignment       : bobot KATEGORI TAMPILAN pada baris itu (6 jenis)
+    - Jumlah Assignment (Jenis Ini) : berapa kali expert ini mengerjakan KATEGORI YANG
+      SAMA (misal Teaching = 3), diulang di setiap baris kategori yang sama
+    - Total Assignment Expert : total SELURUH assignment expert ini (semua kategori
+      digabung), diulang di setiap baris milik expert tersebut
+    - Skor Variasi Expert    : skor akhir expert tersebut dari `summary`, diulang di
+      setiap barisnya
+    """
+    work = df.copy()
+    work["kategori"] = work["activities"].apply(_map_activity)
+
+    mapped = work.dropna(subset=["kategori"]).copy()
+    mapped["bobot_assignment"] = mapped["kategori"].map(CATEGORY_BOBOT)
+
+    # Jumlah kejadian per (expert, kategori) -> berapa kali expert dapat JENIS ini
+    jumlah_per_expert_kategori = (
+        mapped.groupby(["expert", "kategori"])
+        .size()
+        .rename("jumlah_kejadian_jenis")
+        .reset_index()
+    )
+    mapped = mapped.merge(jumlah_per_expert_kategori, on=["expert", "kategori"], how="left")
+
+    # Total seluruh assignment per expert (semua jenis digabung)
+    total_per_expert = (
+        mapped.groupby("expert").size().rename("total_assignment_expert").reset_index()
+    )
+    mapped = mapped.merge(total_per_expert, on="expert", how="left")
+
+    # Urutan expert: dari yang paling banyak assignment ke paling sedikit
+    expert_order = total_per_expert.sort_values(
+        "total_assignment_expert", ascending=False
+    )["expert"].tolist()
+    mapped["expert"] = pd.Categorical(mapped["expert"], categories=expert_order, ordered=True)
+
+    mapped["kategori"] = pd.Categorical(
+        mapped["kategori"], categories=KATEGORI_ORDER, ordered=True
+    )
+
+    sorted_df = mapped.sort_values(["expert", "kategori"]).reset_index(drop=True)
+    result = sorted_df.merge(summary[["expert", "variasi_score"]], on="expert", how="left")
+
+    return result[
+        [
+            "nik", "expert", "kategori", "bobot_assignment",
+            "jumlah_kejadian_jenis", "total_assignment_expert", "variasi_score",
+        ]
+    ].rename(
+        columns={
+            "nik": "NIK",
+            "expert": "Expert",
+            "kategori": "Jenis Assignment",
+            "bobot_assignment": "Bobot Assignment",
+            "jumlah_kejadian_jenis": "Jumlah Assignment (Jenis Ini)",
+            "total_assignment_expert": "Total Assignment Expert",
+            "variasi_score": "Skor Variasi Expert",
+        }
+    )
+
+
+def _render_excel_download(detail_display, summary_display, quarter):
+    """Tombol download Excel berisi 2 sheet: detail per-assignment & rekap per expert."""
+    if st.button("Download Hasil Variasi (Excel)", key="btn_download_variasi_excel"):
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+            detail_display.to_excel(writer, sheet_name="Detail", index=False)
+            summary_display.to_excel(writer, sheet_name="Rekap", index=False)
+        buffer.seek(0)
+
+        st.download_button(
+            label="Download Variasi_Penugasan.xlsx",
+            data=buffer,
+            file_name=f"Variasi_Penugasan_{quarter}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
 
 
 def variation_page():
-    """
-    Streamlit page: two modes:
-      - Upload file: user uploads single Excel (sheet 'General')
-      - From Data Base: app fetches data from DB (learningImpact1)
-    
-    ✅ FIXED: HAPUS FILTER MAPPING - PROSES SEMUA DATA (258 rows)
-    """
-    st.title("Parameter 3 — Poin Variasi Penugasan")
-    st.markdown("pilih menu Upload/Database")
+    supabase = get_db_connection()
 
-    source = st.radio("Data Resource", ["Upload file", "From Data Base"], index=0)
+    st.title("Parameter 2 — Variasi Penugasan (30%)")
+    st.caption(
+        f"Variasi Score = (n Frekuensi Expert / {TOTAL_BOBOT_ASSIGNMENT}) x 30% — "
+        "n Frekuensi Expert adalah jumlah bobot dari KELOMPOK assignment resmi "
+        "(Teaching, Expert Insight, Learning Content, Coaching/Mentoring, "
+        "Penguji/Assessor) yang PERNAH dikerjakan expert, dihitung sekali per "
+        "kelompok terlepas dari repetisinya. Catatan: Coaching (Coach) dan "
+        "Mentoring (Mentor) tetap ditampilkan terpisah di tabel detail, tapi "
+        "dihitung sebagai satu kelompok bobot (1.3) untuk skor."
+    )
 
-    uploaded = None
+    options = ["Upload file", "From Data Base"]
+    mode = st.pills("Data Resource", options, selection_mode="single", default="From Data Base")
 
-    if source == "Upload file":
-        uploaded = st.file_uploader("Upload file (sheet 'General') — hanya 1 file", type=["xlsx", "xls"], key="var_main")
-        st.info("Mode Upload: unggah satu file Excel yang memuat sheet 'General'.")
+    if mode == "Upload file":
+        st.header("📁 Upload File")
+
+        quarter_upload = st.selectbox("Quarter untuk data ini", ["Q1", "Q2", "Q3", "Q4"])
+
+        uploaded_files = st.file_uploader(
+            "Upload data (format Excel)", accept_multiple_files=True, type=["xls", "xlsx"]
+        )
+        if uploaded_files:
+            st.session_state["variasi_combined_df"] = read_and_merge(uploaded_files, quarter_upload)
+            st.session_state["variasi_quarter"] = quarter_upload
+        combined_df = st.session_state.get("variasi_combined_df", pd.DataFrame())
+        quarter = st.session_state.get("variasi_quarter", quarter_upload)
     else:
-        st.info("Mode DB: data utama diambil dari database (view/table 'learningImpact1').")
+        combined_df = load_all_data("learning_hour")
 
-    # local fallback for convenience
-    if source == "Upload file" and uploaded is None and os.path.exists("Agustus 2025.xlsx"):
-        uploaded = "Agustus 2025.xlsx"
-
-    # load main data
-    try:
-        if source == "From Data Base":
-            df_main = load_all_data("learningImpact1")
-        else:
-            if uploaded is None:
-                st.info("Silakan unggah file atau pilih 'From Data Base'.")
-                return
-            df_main = pd.read_excel(uploaded, sheet_name="General", dtype=str)
-    except Exception as e:
-        st.error(f"Gagal ambil/membaca data utama: {e}")
+    if combined_df.empty:
+        st.info("Tidak terdapat data")
         return
-    
-    st.info(f"📊 Total baris data: {len(df_main)}")
-    
-    # --- Quarter filter UI and date column auto-detection ---
-    quarter_choice = st.selectbox("Filter Quarter", ["All", "Q1", "Q2", "Q3", "Q4"], index=0)
 
-    date_col_candidates = ["date", "tanggal", "event_date", "start_date", "activity_date", "date_event"]
-    date_col = _find_col(df_main, date_col_candidates)
+    if mode == "From Data Base":
+        quarters = ["Q1", "Q2", "Q3", "Q4"]
+        quarter = st.pills("Pilih Quarter", quarters, selection_mode="single", default="Q1")
+        if "quarter" in combined_df.columns:
+            combined_df = combined_df[combined_df["quarter"] == quarter]
 
-    if date_col is None:
-        st.info("Kolom tanggal tidak ditemukan otomatis — menampilkan semua data.")
-    else:
+    if combined_df.empty:
+        st.info(f"Tidak ada data untuk {quarter}. Pilih quarter lain yang sesuai dengan data.")
+        return
+
+    required_cols = ["nik", "expert", "activities"]
+    missing_cols = [c for c in required_cols if c not in combined_df.columns]
+    if missing_cols:
+        st.error(
+            f"Kolom berikut tidak ditemukan: {missing_cols}. Pastikan file/tabel sesuai "
+            "format 'LH Recog/Request' (sheet 'direct,coe,self')."
+        )
+        return
+
+    summary, touched, unmapped_values = compute_variasi_score(combined_df)
+
+    if unmapped_values:
+        st.warning(
+            "⚠️ Ada nilai di kolom 'activities' yang tidak dikenali (di luar kategori "
+            f"resmi) dan diabaikan dari perhitungan: {', '.join(unmapped_values)}"
+        )
+
+    spacer_l, col1, col2, spacer_r = st.columns([1, 2, 2, 1])
+    col1.metric("Total Expert", summary["expert"].nunique(), border=True)
+    col2.metric("Total Baris Assignment", len(combined_df), border=True)
+
+    st.subheader("📋 Assignment/Variasi yang Dikerjakan per Expert")
+    st.caption(
+        "Setiap baris = satu kejadian assignment. Expert diurutkan dari yang PALING "
+        "BANYAK assignment ke yang paling sedikit; di dalam satu expert, kategori "
+        "diurutkan sesuai urutan resmi (Teaching → Expert Insight → Learning Content "
+        "→ Coaching → Mentoring → Penguji/Assessor). 'Jumlah Assignment (Jenis Ini)' = "
+        "berapa kali expert mengerjakan kategori yang sama pada baris itu. 'Total "
+        "Assignment Expert' = total seluruh assignment expert (semua jenis digabung). "
+        "'Skor Variasi Expert' = skor akhir expert tersebut, diulang di tiap barisnya."
+    )
+    detail_display = build_individual_assignment_table(combined_df, summary)
+    st.dataframe(detail_display, use_container_width=True, hide_index=True)
+
+    kategori_counts = (
+        touched.groupby("kategori")["expert"].nunique().reset_index(name="jumlah_expert")
+    )
+
+    col_pie, col_bar = st.columns(2)
+    with col_pie:
+        st.subheader("🥧 Proporsi Assignment/Variasi")
+        pie_fig = px.pie(
+            kategori_counts,
+            names="kategori",
+            values="jumlah_expert",
+            hole=0.4,
+        )
+        pie_fig.update_layout(legend_title_text="Assignment/Variasi")
+        st.plotly_chart(pie_fig, use_container_width=True)
+
+    with col_bar:
+        st.subheader("📊 Jumlah Expert per Assignment/Variasi")
+        bar_fig = px.bar(
+            kategori_counts.sort_values("jumlah_expert", ascending=False),
+            x="kategori",
+            y="jumlah_expert",
+            text="jumlah_expert",
+        )
+        bar_fig.update_layout(
+            xaxis_title="Assignment/Variasi", yaxis_title="Jumlah Expert"
+        )
+        st.plotly_chart(bar_fig, use_container_width=True)
+
+    st.subheader("📊 Rekap Variasi Penugasan per Expert")
+    summary_display = summary[
+        ["nik", "expert", "jumlah_kategori_dikerjakan", "n_frekuensi_expert", "variasi_score"]
+    ].rename(
+        columns={
+            "nik": "NIK",
+            "expert": "Expert",
+            "jumlah_kategori_dikerjakan": "Jumlah Kelompok Bobot",
+            "n_frekuensi_expert": "n Frekuensi Expert",
+            "variasi_score": "Variasi Score (dari 30)",
+        }
+    )
+    st.dataframe(summary_display, use_container_width=True)
+
+    st.download_button(
+        "Download rekap CSV",
+        data=summary_display.to_csv(index=False).encode("utf-8"),
+        file_name="variasi_penugasan_summary.csv",
+        mime="text/csv",
+    )
+
+    _render_excel_download(detail_display, summary_display, quarter)
+
+    if st.button("💾 Simpan Variasi Score ke Database", key="btn_save_variasi"):
         try:
-            df_main["__PARSED_DATE__"] = pd.to_datetime(df_main[date_col], errors="coerce")
-            df_main["__QUARTER__"] = df_main["__PARSED_DATE__"].dt.quarter
+            df_save = summary[["nik", "expert", "variasi_score"]].copy()
+            df_save["quarter"] = quarter
 
-            if quarter_choice != "All":
-                qnum = int(quarter_choice.replace("Q", ""))
-                df_main = df_main[df_main["__QUARTER__"] == qnum].copy()
-                st.info(f"Menampilkan data untuk {quarter_choice} (berdasarkan kolom '{date_col}'). Total: {len(df_main)} baris")
-        except Exception:
-            st.info("Gagal memproses kolom tanggal untuk filter quarter; menampilkan semua data.")
-    # --- Selesai filter quarter ---
+            inserted = 0
+            updated = 0
+            for _, row in df_save.iterrows():
+                existing = (
+                    supabase.table("calculated")
+                    .select("id")
+                    .eq("nik", int(row["nik"]))
+                    .eq("expert", row["expert"])
+                    .eq("quarter", row["quarter"])
+                    .execute()
+                )
+                if existing.data:
+                    supabase.table("calculated").update(
+                        {"variation": float(row["variasi_score"])}
+                    ).eq("nik", int(row["nik"])).eq("expert", row["expert"]).eq(
+                        "quarter", row["quarter"]
+                    ).execute()
+                    updated += 1
+                else:
+                    supabase.table("calculated").insert(
+                        {
+                            "nik": int(row["nik"]),
+                            "expert": row["expert"],
+                            "quarter": row["quarter"],
+                            "variation": float(row["variasi_score"]),
+                        }
+                    ).execute()
+                    inserted += 1
 
-    # ============================================
-    # ✅ FIXED: HAPUS FILTER MAPPING
-    # Detect columns dan process SEMUA data tanpa filter
-    # ============================================
-    
-    col_nik = _find_col(df_main, ["nik", "id"])
-    col_name = _find_col(df_main, ["name", "expert", "nama"])
-    col_course = _find_col(df_main, ["course_name", "course", "event", "course name"])
-    col_variasi = _find_col(df_main, ["variasi", "variation"])
-    col_sub = _find_col(df_main, ["sub_penugasan", "penugasan"])
-
-    if not col_name or not col_course:
-        st.error("Kolom 'name' atau 'course_name/event' tidak ditemukan di data utama.")
-        return
-
-    # normalize
-    df_main = df_main.rename(columns={c: c.strip() for c in df_main.columns})
-    df_main["NAME_UP"] = df_main[col_name].astype(str).str.strip().str.upper()
-    df_main["EVENT_NORM"] = df_main[col_course].apply(_norm_text)
-    df_main["VARIASI_TEXT"] = df_main[col_variasi].astype(str).fillna("") if col_variasi else ""
-    df_main["SUB_PENUGASAN"] = df_main[col_sub].astype(str).fillna("") if col_sub else ""
-
-    # ✅ TIDAK ADA FILTER - GUNAKAN SEMUA DATA
-    df_filtered = df_main.copy()
-    
-    if df_filtered.empty:
-        st.warning("Tidak ada data untuk diproses.")
-        return
-
-    st.info(f"✅ Memproses {len(df_filtered)} data (tanpa filter mapping)")
-
-    # --- Preview with quarter filter ---
-    quarter_col = _find_col(df_filtered, ["quarter", "__QUARTER__", "Quarter"])
-
-    if quarter_col is not None:
-        available = list(dict.fromkeys(df_filtered[quarter_col].dropna().astype(str).tolist()))
-        order = ["Q1", "Q2", "Q3", "Q4"]
-        available_sorted = [q for q in order if q in available] + [q for q in available if q not in order]
-        preview_choices = ["All"] + available_sorted
-    else:
-        preview_choices = ["All"]
-
-    preview_q = st.selectbox("Filter Preview by Quarter", preview_choices, index=0, key="preview_quarter")
-
-    if preview_q == "All" or quarter_col is None:
-        df_filtered_preview = df_filtered.copy()
-    else:
-        df_filtered_preview = df_filtered[df_filtered[quarter_col].astype(str) == preview_q].copy()
-
-    st.subheader(f"Preview ({len(df_filtered_preview)} baris)")
-    preview_cols = [col_name, col_course]
-    if col_sub:
-        preview_cols.append(col_sub)
-    if col_variasi:
-        preview_cols.append(col_variasi)
-    st.dataframe(df_filtered_preview[preview_cols].head(200))
-
-    # ============================================
-    # Aggregate by expert + event (count frequency) and compute bobot from 'variasi'
-    # ============================================
-    rows = []
-    grouped = df_filtered.groupby(["NAME_UP", "EVENT_NORM"], dropna=False)
-    for (name_up, ev_norm), group in grouped:
-        freq = int(len(group))
-        sample = group.iloc[0]
-        name_val = sample.get(col_name, name_up)
-        activity_display = sample.get(col_course, "")
-        sub_pen = sample.get("SUB_PENUGASAN", "")
-
-        # prefer variasi column values (first non-empty)
-        variasi_vals = [str(x).strip() for x in group["VARIASI_TEXT"].tolist() if str(x).strip()]
-        bobot = None
-        if variasi_vals:
-            # try numeric first
-            for v in variasi_vals:
-                try:
-                    bobot = float(v.replace(",", "."))
-                    break
-                except Exception:
-                    pass
-            if bobot is None:
-                bobot = _assign_bobot_from_text(variasi_vals[0])
-        else:
-            # fallback to sub_pen or activity_display inference
-            bobot = _assign_bobot_from_text(sub_pen or activity_display or "")
-
-        point = round(bobot * freq, 2)
-        rows.append({
-            "NAME": name_val,
-            "EVENT": activity_display,
-            "EVENT_NORM": ev_norm,
-            "BOBOT LH": bobot,
-            "FREKUENSI": freq,
-            "POIN BOBOT": point
-        })
-
-    df_records = pd.DataFrame(rows)
-    if df_records.empty:
-        st.info("Tidak ditemukan record setelah agregasi.")
-        return
-    df_records.insert(0, "no", range(1, len(df_records) + 1))
-
-    st.subheader(f"Detail Variasi Penugasan (filtered) — {len(df_records)} expert")
-    # remove orange header styling; keep minimal padding and number formatting
-    styler = (df_records[["no", "NAME", "EVENT", "BOBOT LH", "FREKUENSI", "POIN BOBOT"]]
-              .style.set_table_styles([
-                  {"selector": "th", "props": [("padding", "6px"), ("text-align", "left")]},
-                  {"selector": "td", "props": [("padding", "6px")]}
-              ]).format({"BOBOT LH": "{:.2f}", "POIN BOBOT": "{:.2f}"}))
-    st.markdown(styler.to_html(), unsafe_allow_html=True)
-
-    # summary per expert (group by NAME only)
-    summary = (df_records
-               .groupby(["NAME"], as_index=False)
-               .agg(total_point=("POIN BOBOT", "sum"))
-               .sort_values("total_point", ascending=False))
-    
-    st.subheader(f"Ringkasan per Expert (Total Point) — {len(summary)} expert")
-    st.dataframe(summary)
-
-    # downloads (CSV won't include NIK)
-    st.download_button("Download detail CSV", data=df_records.to_csv(index=False).encode("utf-8"), file_name="variation_detail.csv", mime="text/csv")
-    st.download_button("Download summary CSV", data=summary.to_csv(index=False).encode("utf-8"), file_name="variation_summary.csv", mime="text/csv")
+            st.success(f"✅ {inserted} insert + {updated} update untuk {quarter} (Variasi Score)")
+            st.rerun()
+        except Exception as e:
+            st.error(f"❌ Error: {e}")
 
 
 if __name__ == "__main__":
