@@ -132,13 +132,6 @@ def save_scores_to_db(supabase, rekap, quarter):
                 "quarter": quarter,
                 "learning_hour": float(row["learning_hour"]),
             },
-            # PENTING: tanpa on_conflict, Supabase mendeteksi duplikat lewat kolom
-            # 'id' (primary key). Karena 'id' tidak pernah kita kirim, tiap panggilan
-            # upsert() dianggap INSERT baru, lalu gagal kalau kombinasi
-            # (nik, expert, quarter) itu SUDAH ADA - melanggar UNIQUE constraint
-            # 'calculated_nik_expert_quarter_key'. on_conflict di sini memberi tahu
-            # Supabase: "anggap duplikat kalau (nik, expert, quarter) sama", supaya
-            # baris yang sudah ada di-UPDATE, bukan gagal insert.
             on_conflict="nik,expert,quarter",
         ).execute()
 

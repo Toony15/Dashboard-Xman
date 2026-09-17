@@ -168,16 +168,6 @@ def expertLevel():
 
     main_df["expert_level_score"] = (main_df["bobot_program"] * main_df["bobot_expert"]).round(4) * experLevel_PERSEN
 
-    # === Final Expert Level per expert ===
-    # PENTING: expert_level_score DIHITUNG SEKALI PER JENIS ASSIGNMENT ('variasi'),
-    # bukan per baris/repetisi training. Kalau expert 3x Teaching (skor sama-sama
-    # 14.4), itu tetap dihitung 1x untuk Teaching - bukan 14.4+14.4+14.4. Ini
-    # konsisten dengan pola di variation.py (Variasi Penugasan), di mana repetisi
-    # jenis yang sama tidak melipatgandakan skor.
-    #
-    # Kalau satu jenis assignment (misal 'Teaching') muncul berkali-kali dengan
-    # Proficiency Level yang BERBEDA (sehingga expert_level_score-nya juga beda),
-    # yang diambil adalah kemunculan PERTAMA untuk jenis itu (keep='first').
     deduped_per_jenis = main_df.drop_duplicates(subset=["nik", "expert", "variasi"], keep="first")
 
     agg_expert = deduped_per_jenis.groupby(["nik", "expert"], as_index=False).agg(
@@ -220,9 +210,6 @@ def expertLevel():
             "final_expert_level": "Final Expert Level",
         }
     )
-    # Kelompokkan baris-baris dengan NIK yang sama supaya menempel berurutan,
-    # TANPA mengubah urutan NIK itu sendiri (dipertahankan sesuai kemunculan
-    # pertama di data, bukan diurutkan kecil-besar).
     urutan_nik = list(dict.fromkeys(detail_df["nik"]))
     detail_df["nik"] = pd.Categorical(detail_df["nik"], categories=urutan_nik, ordered=True)
     detail_df = detail_df.sort_values(by="nik", kind="stable").reset_index(drop=True)

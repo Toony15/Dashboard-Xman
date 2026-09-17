@@ -218,6 +218,5 @@ def compensation():
 
     return df
 
-
 if __name__ == "__main__":
     compensation()

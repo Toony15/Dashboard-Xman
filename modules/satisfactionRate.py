@@ -100,11 +100,7 @@ def satisfaction_page():
     if mode == "Upload file":
         st.header("Upload File")
 
-        # ------------------------------------------------------------
-        # Input manual: Nama Event & Quarter (ditempel ke tiap baris data
-        # hasil upload, bukan dideteksi otomatis dari isi file, karena
-        # file mentah dari sistem survey tidak selalu mencantumkan info ini).
-        # ------------------------------------------------------------
+        
         col_ev, col_q = st.columns([2, 1])
         with col_ev:
             event_name = st.text_input(
@@ -156,17 +152,10 @@ def satisfaction_page():
         combined_df = st.session_state.get("combined_df", pd.DataFrame())
         sheets = st.session_state.get("lim1_sheets", {})
 
-        # ------------------------------------------------------------
-        # Dashboard per-expert (Ringkasan / Detail per Expert / Data Mentah),
-        # gaya prototype 'Expert Feedback Analyzer' standalone
-        # ------------------------------------------------------------
         if sheets:
             st.markdown("---")
             render_expert_feedback_results(sheets)
 
-        # ------------------------------------------------------------
-        # Tombol Simpan ke Database
-        # ------------------------------------------------------------
         if not combined_df.empty:
             st.markdown("---")
             st.subheader("💾 Simpan ke Database")
@@ -218,10 +207,6 @@ def satisfaction_page():
                 </style>
             """, unsafe_allow_html=True)
             tab1, tab2 = st.tabs(["Overview", "Detail"])
-
-            # ==========================================================
-            # DETAIL
-            # ==========================================================
 
             with tab2:
                 st.subheader("Pilih Event untuk Ditampilkan")
@@ -360,10 +345,7 @@ def satisfaction_page():
 
                             # Tambahkan garis pemisah antar expert
                             st.markdown("---")
-            # =============================================================
-            # OVERVIEW
-            # =============================================================
-
+                            
             with tab1:
                 # --- 📈 RESUME SECTION ---
                 st.markdown(
